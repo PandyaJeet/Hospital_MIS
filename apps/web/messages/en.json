@@ -74,5 +74,22 @@
     "invalidPhone": "Enter a valid 10-digit phone number.",
     "invalidAge": "Enter a valid age (1–120).",
     "duplicate": "A patient with this phone number already exists."
+  },
+  "queue": {
+    "title": "Patient queue",
+    "subtitle": "Today's OPD queue",
+    "count": "{count} in queue",
+    "empty": "No patients in the queue yet",
+    "emptyBody": "Registered patients will appear here as they check in.",
+    "registerCta": "Register patient",
+    "waitMinutes": "{minutes} min wait",
+    "years": "{age} yrs",
+    "loadError": "Couldn't load the queue. Please try again.",
+    "retry": "Retry",
+    "status": {
+      "waiting": "Waiting",
+      "in_consultation": "In consultation",
+      "done": "Done"
+    }
   }
 }
