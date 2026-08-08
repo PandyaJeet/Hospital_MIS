@@ -1,0 +1,55 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens — source of truth is Design.md.
+ *
+ * Tailwind v4 is CSS-first: tokens declared in @theme become utilities
+ * (e.g. --color-accent -> bg-accent / text-accent / border-accent).
+ * Design.md §10 shows a Tailwind v3 config; these are the same values ported
+ * to v4's @theme mechanism.
+ *
+ * Naming note: the text-* color tokens are named per Design.md, so their
+ * text-color utilities read as `text-text-primary` / `text-text-secondary` /
+ * `text-text-disabled`. The doubled "text-" is expected (Tailwind prefixes the
+ * property). Background/border utilities are `bg-text-primary`, etc.
+ */
+@theme {
+  /* Neutrals / surfaces */
+  --color-background: #f7f8fa;
+  --color-surface: #ffffff;
+  --color-surface-muted: #eef1f4;
+  --color-border: #dde2e7;
+
+  /* Text */
+  --color-text-primary: #1a2027;
+  --color-text-secondary: #5c6672;
+  --color-text-disabled: #a0a8b1;
+
+  /* Accent (brand) */
+  --color-accent: #0f766e;
+  --color-accent-hover: #0d5f58;
+  --color-accent-subtle: #e6f4f2;
+
+  /* Semantic — used for meaning only, never decoration (Design.md §2).
+     `critical` is reserved for genuine clinical urgency. */
+  --color-success: #16a34a;
+  --color-warning: #d97706;
+  --color-critical: #dc2626;
+  --color-info: #2563eb;
+
+  /* Type scale (Design.md §3). xs/sm/base/lg already match Tailwind defaults;
+     only xl and 2xl need overriding. */
+  --text-xl: 1.375rem; /* 22px */
+  --text-xl--line-height: 1.75rem;
+  --text-2xl: 1.75rem; /* 28px */
+  --text-2xl--line-height: 2.25rem;
+}
+
+/*
+ * Fonts are declared inline so the `font-sans` utility resolves the next/font
+ * CSS variables (set on <html>) at the point of use.
+ */
+@theme inline {
+  --font-sans: var(--font-inter), var(--font-noto-devanagari), ui-sans-serif,
+    system-ui, sans-serif;
+}
