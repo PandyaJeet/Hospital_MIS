@@ -101,5 +101,28 @@
     "history": "મુલાકાત ઇતિહાસ",
     "noHistory": "કોઈ અગાઉની મુલાકાત નોંધાયેલ નથી.",
     "years": "{age} વર્ષ"
+  },
+  "prescribe": {
+    "title": "દવા લખો",
+    "subtitle": "પ્રિસ્ક્રિપ્શન લખો",
+    "medication": "દવા {number}",
+    "drug": "દવા",
+    "drugPlaceholder": "દા.ત. પેરાસિટામોલ 500mg",
+    "dosage": "માત્રા",
+    "dosagePlaceholder": "દા.ત. 1 ગોળી",
+    "frequency": "આવર્તન",
+    "frequencyPlaceholder": "દા.ત. દિવસમાં બે વાર",
+    "duration": "અવધિ",
+    "durationPlaceholder": "દા.ત. 5 દિવસ",
+    "addMedication": "દવા ઉમેરો",
+    "remove": "દૂર કરો",
+    "advice": "સલાહ / નોંધ",
+    "advicePlaceholder": "દર્દી માટે સામાન્ય સલાહ",
+    "save": "પ્રિસ્ક્રિપ્શન સાચવો",
+    "saving": "સાચવાઈ રહ્યું છે…",
+    "successTitle": "પ્રિસ્ક્રિપ્શન સાચવ્યું",
+    "successBody": "પ્રિસ્ક્રિપ્શન સાચવવામાં આવ્યું છે.",
+    "newPrescription": "નવું પ્રિસ્ક્રિપ્શન",
+    "atLeastOneMed": "ઓછામાં ઓછી એક દવા ઉમેરો."
   }
 }

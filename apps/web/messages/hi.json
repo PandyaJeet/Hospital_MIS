@@ -101,5 +101,28 @@
     "history": "विज़िट इतिहास",
     "noHistory": "कोई पिछली विज़िट दर्ज नहीं।",
     "years": "{age} वर्ष"
+  },
+  "prescribe": {
+    "title": "दवा लिखें",
+    "subtitle": "एक प्रिस्क्रिप्शन लिखें",
+    "medication": "दवा {number}",
+    "drug": "दवा",
+    "drugPlaceholder": "जैसे पैरासिटामोल 500mg",
+    "dosage": "खुराक",
+    "dosagePlaceholder": "जैसे 1 गोली",
+    "frequency": "आवृत्ति",
+    "frequencyPlaceholder": "जैसे दिन में दो बार",
+    "duration": "अवधि",
+    "durationPlaceholder": "जैसे 5 दिन",
+    "addMedication": "दवा जोड़ें",
+    "remove": "हटाएँ",
+    "advice": "सलाह / नोट्स",
+    "advicePlaceholder": "मरीज़ के लिए सामान्य सलाह",
+    "save": "प्रिस्क्रिप्शन सहेजें",
+    "saving": "सहेजा जा रहा है…",
+    "successTitle": "प्रिस्क्रिप्शन सहेजा गया",
+    "successBody": "प्रिस्क्रिप्शन सहेज लिया गया है।",
+    "newPrescription": "नया प्रिस्क्रिप्शन",
+    "atLeastOneMed": "कम से कम एक दवा जोड़ें।"
   }
 }

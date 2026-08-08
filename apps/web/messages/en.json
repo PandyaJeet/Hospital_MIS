@@ -101,5 +101,28 @@
     "history": "Visit history",
     "noHistory": "No past visits recorded.",
     "years": "{age} yrs"
+  },
+  "prescribe": {
+    "title": "Prescribe",
+    "subtitle": "Write a prescription",
+    "medication": "Medication {number}",
+    "drug": "Drug",
+    "drugPlaceholder": "e.g. Paracetamol 500mg",
+    "dosage": "Dosage",
+    "dosagePlaceholder": "e.g. 1 tablet",
+    "frequency": "Frequency",
+    "frequencyPlaceholder": "e.g. Twice daily",
+    "duration": "Duration",
+    "durationPlaceholder": "e.g. 5 days",
+    "addMedication": "Add medication",
+    "remove": "Remove",
+    "advice": "Advice / notes",
+    "advicePlaceholder": "General advice for the patient",
+    "save": "Save prescription",
+    "saving": "Saving…",
+    "successTitle": "Prescription saved",
+    "successBody": "The prescription has been saved.",
+    "newPrescription": "New prescription",
+    "atLeastOneMed": "Add at least one medication."
   }
 }
