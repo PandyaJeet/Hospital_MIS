@@ -1,0 +1,32 @@
+{
+  "//": [
+    "Root tsconfig for the BACKEND track only (supabase/**). apps/web gets its own",
+    "tsconfig from Prince — Next.js generates one, and keeping the two separate",
+    "avoids a shared file that both of us would edit (Workflow.md §5).",
+    "",
+    "strict + noImplicitAny satisfy rules.md §5.3. allowImportingTsExtensions is on",
+    "because the scripts are run directly by tsx and use explicit .ts specifiers,",
+    "which is what Node's own resolver wants for ESM."
+  ],
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "types": ["node"],
+
+    "strict": true,
+    "noImplicitAny": true,
+    "noUncheckedIndexedAccess": false,
+    "exactOptionalPropertyTypes": false,
+    "forceConsistentCasingInFileNames": true,
+
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "noEmit": true
+  },
+  "include": ["supabase/**/*.ts"],
+  "exclude": ["node_modules", "apps"]
+}
