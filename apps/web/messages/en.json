@@ -91,5 +91,15 @@
       "in_consultation": "In consultation",
       "done": "Done"
     }
+  },
+  "chart": {
+    "notFoundTitle": "Patient not found",
+    "notFoundBody": "This record doesn't exist or isn't in your clinic.",
+    "backToQueue": "Back to queue",
+    "allergies": "Allergies",
+    "noAllergies": "No known allergies",
+    "history": "Visit history",
+    "noHistory": "No past visits recorded.",
+    "years": "{age} yrs"
   }
 }
