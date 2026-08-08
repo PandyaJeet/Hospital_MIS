@@ -22,5 +22,36 @@
     "dashboard": "Dashboard",
     "users": "Users",
     "settings": "Settings"
+  },
+  "auth": {
+    "login": {
+      "title": "Sign in",
+      "subtitle": "Access your clinic workspace",
+      "email": "Email",
+      "password": "Password",
+      "submit": "Sign in",
+      "submitting": "Signing in…",
+      "noAccount": "New clinic?",
+      "createClinic": "Create one",
+      "invalidCredentials": "Incorrect email or password."
+    },
+    "onboarding": {
+      "title": "Create your clinic",
+      "subtitle": "Set up your workspace and admin account",
+      "clinicName": "Clinic name",
+      "fullName": "Your full name",
+      "email": "Email",
+      "password": "Password",
+      "submit": "Create clinic",
+      "submitting": "Creating…",
+      "haveAccount": "Already have an account?",
+      "signIn": "Sign in",
+      "emailTaken": "That email is already registered."
+    },
+    "validation": {
+      "required": "This field is required.",
+      "invalidEmail": "Enter a valid email address.",
+      "passwordTooShort": "Password must be at least 6 characters."
+    }
   }
 }

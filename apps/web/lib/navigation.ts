@@ -11,7 +11,9 @@ import {
   Users,
 } from "lucide-react";
 
-export type Role = "doctor" | "nurse" | "billing" | "admin";
+import type { Role } from "./roles";
+
+export type { Role };
 
 export interface NavItem {
   /** Key into the `nav` message namespace (see messages/*.json). */

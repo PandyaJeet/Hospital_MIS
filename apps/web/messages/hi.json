@@ -22,5 +22,36 @@
     "dashboard": "डैशबोर्ड",
     "users": "उपयोगकर्ता",
     "settings": "सेटिंग्स"
+  },
+  "auth": {
+    "login": {
+      "title": "साइन इन करें",
+      "subtitle": "अपने क्लिनिक वर्कस्पेस में जाएँ",
+      "email": "ईमेल",
+      "password": "पासवर्ड",
+      "submit": "साइन इन करें",
+      "submitting": "साइन इन हो रहा है…",
+      "noAccount": "नया क्लिनिक?",
+      "createClinic": "एक बनाएँ",
+      "invalidCredentials": "ईमेल या पासवर्ड ग़लत है।"
+    },
+    "onboarding": {
+      "title": "अपना क्लिनिक बनाएँ",
+      "subtitle": "अपना वर्कस्पेस और एडमिन खाता सेट करें",
+      "clinicName": "क्लिनिक का नाम",
+      "fullName": "आपका पूरा नाम",
+      "email": "ईमेल",
+      "password": "पासवर्ड",
+      "submit": "क्लिनिक बनाएँ",
+      "submitting": "बन रहा है…",
+      "haveAccount": "पहले से खाता है?",
+      "signIn": "साइन इन करें",
+      "emailTaken": "यह ईमेल पहले से पंजीकृत है।"
+    },
+    "validation": {
+      "required": "यह फ़ील्ड आवश्यक है।",
+      "invalidEmail": "मान्य ईमेल पता दर्ज करें।",
+      "passwordTooShort": "पासवर्ड कम से कम 6 वर्णों का होना चाहिए।"
+    }
   }
 }
