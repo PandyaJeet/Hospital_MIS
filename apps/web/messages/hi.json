@@ -1,0 +1,26 @@
+{
+  "common": {
+    "search": "मरीज़ खोजें",
+    "account": "खाता",
+    "language": "भाषा",
+    "openMenu": "मेनू खोलें",
+    "closeMenu": "मेनू बंद करें"
+  },
+  "roles": {
+    "doctor": "डॉक्टर",
+    "nurse": "नर्स",
+    "billing": "बिलिंग",
+    "admin": "एडमिन"
+  },
+  "nav": {
+    "queue": "कतार",
+    "prescribe": "दवा लिखें",
+    "rounds": "राउंड",
+    "tasks": "कार्य",
+    "register": "पंजीकरण",
+    "reconciliation": "मिलान",
+    "dashboard": "डैशबोर्ड",
+    "users": "उपयोगकर्ता",
+    "settings": "सेटिंग्स"
+  }
+}

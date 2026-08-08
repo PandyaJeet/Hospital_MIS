@@ -3,12 +3,15 @@
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Activity, Globe, Menu, Search, X } from "lucide-react";
+import { useTranslations } from "next-intl";
+import { Activity, Menu, Search, X } from "lucide-react";
 
-import { roleLabels, roleNav, type Role } from "@/lib/navigation";
+import { LanguageSwitcher } from "@/components/shared/language-switcher";
+import { roleNav, type Role } from "@/lib/navigation";
 import { cn } from "@/lib/utils/cn";
 
 function Brand({ role }: { role: Role }) {
+  const t = useTranslations("roles");
   return (
     <div className="flex h-14 items-center gap-2 border-b border-border px-4">
       <Activity className="h-5 w-5 shrink-0 text-accent" aria-hidden="true" />
@@ -16,7 +19,7 @@ function Brand({ role }: { role: Role }) {
         <span className="text-sm font-semibold text-text-primary">
           Hospital MIS
         </span>
-        <span className="text-xs text-text-secondary">{roleLabels[role]}</span>
+        <span className="text-xs text-text-secondary">{t(role)}</span>
       </div>
     </div>
   );
@@ -30,6 +33,7 @@ function NavLinks({
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
+  const t = useTranslations("nav");
 
   return (
     <nav className="flex flex-col gap-1 p-3">
@@ -51,7 +55,7 @@ function NavLinks({
             )}
           >
             <Icon className="h-5 w-5 shrink-0" aria-hidden="true" />
-            {item.label}
+            {t(item.key)}
           </Link>
         );
       })}
@@ -67,6 +71,7 @@ export function AppShell({
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
+  const t = useTranslations("common");
 
   return (
     <div className="flex flex-1">
@@ -81,14 +86,14 @@ export function AppShell({
         <div className="fixed inset-0 z-40 md:hidden">
           <button
             type="button"
-            aria-label="Close menu"
+            aria-label={t("closeMenu")}
             onClick={() => setOpen(false)}
             className="absolute inset-0 bg-black/40"
           />
           <aside className="absolute inset-y-0 left-0 flex w-64 flex-col bg-surface shadow-xl">
             <button
               type="button"
-              aria-label="Close menu"
+              aria-label={t("closeMenu")}
               onClick={() => setOpen(false)}
               className="absolute right-2 top-3 z-10 rounded-md p-2 text-text-secondary hover:bg-surface-muted"
             >
@@ -105,14 +110,13 @@ export function AppShell({
         <header className="flex h-14 items-center gap-3 border-b border-border bg-surface px-4">
           <button
             type="button"
-            aria-label="Open menu"
+            aria-label={t("openMenu")}
             onClick={() => setOpen(true)}
             className="rounded-md p-2 text-text-secondary hover:bg-surface-muted md:hidden"
           >
             <Menu className="h-5 w-5" aria-hidden="true" />
           </button>
 
-          {/* Search — placeholder, wired to real search later */}
           <div className="relative hidden max-w-md flex-1 sm:block">
             <Search
               className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-disabled"
@@ -120,26 +124,17 @@ export function AppShell({
             />
             <input
               type="search"
-              aria-label="Search patients"
-              placeholder="Search patients…"
+              aria-label={t("search")}
+              placeholder={t("search")}
               className="h-9 w-full rounded-md border border-border bg-background pl-9 pr-3 text-sm text-text-primary placeholder:text-text-disabled focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             />
           </div>
 
-          <div className="ml-auto flex items-center gap-1">
-            {/* Language switcher — placeholder, wired with i18n later */}
+          <div className="ml-auto flex items-center gap-2">
+            <LanguageSwitcher />
             <button
               type="button"
-              aria-label="Change language"
-              className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-text-secondary hover:bg-surface-muted"
-            >
-              <Globe className="h-4 w-4" aria-hidden="true" />
-              <span className="hidden sm:inline">EN</span>
-            </button>
-            {/* User menu — placeholder */}
-            <button
-              type="button"
-              aria-label="Account"
+              aria-label={t("account")}
               className="flex h-8 w-8 items-center justify-center rounded-full bg-accent-subtle text-sm font-medium text-accent"
             >
               P

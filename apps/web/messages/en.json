@@ -1,0 +1,26 @@
+{
+  "common": {
+    "search": "Search patients",
+    "account": "Account",
+    "language": "Language",
+    "openMenu": "Open menu",
+    "closeMenu": "Close menu"
+  },
+  "roles": {
+    "doctor": "Doctor",
+    "nurse": "Nurse",
+    "billing": "Billing",
+    "admin": "Admin"
+  },
+  "nav": {
+    "queue": "Queue",
+    "prescribe": "Prescribe",
+    "rounds": "Rounds",
+    "tasks": "Tasks",
+    "register": "Register",
+    "reconciliation": "Reconciliation",
+    "dashboard": "Dashboard",
+    "users": "Users",
+    "settings": "Settings"
+  }
+}

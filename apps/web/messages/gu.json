@@ -1,0 +1,26 @@
+{
+  "common": {
+    "search": "દર્દી શોધો",
+    "account": "ખાતું",
+    "language": "ભાષા",
+    "openMenu": "મેનૂ ખોલો",
+    "closeMenu": "મેનૂ બંધ કરો"
+  },
+  "roles": {
+    "doctor": "ડૉક્ટર",
+    "nurse": "નર્સ",
+    "billing": "બિલિંગ",
+    "admin": "એડમિન"
+  },
+  "nav": {
+    "queue": "કતાર",
+    "prescribe": "દવા લખો",
+    "rounds": "રાઉન્ડ",
+    "tasks": "કાર્યો",
+    "register": "નોંધણી",
+    "reconciliation": "મેળવણી",
+    "dashboard": "ડેશબોર્ડ",
+    "users": "વપરાશકર્તાઓ",
+    "settings": "સેટિંગ્સ"
+  }
+}

@@ -14,17 +14,11 @@ import {
 export type Role = "doctor" | "nurse" | "billing" | "admin";
 
 export interface NavItem {
-  label: string;
+  /** Key into the `nav` message namespace (see messages/*.json). */
+  key: string;
   href: string;
   icon: LucideIcon;
 }
-
-export const roleLabels: Record<Role, string> = {
-  doctor: "Doctor",
-  nurse: "Nurse",
-  billing: "Billing",
-  admin: "Admin",
-};
 
 /**
  * Top-level nav per role. Dynamic detail routes (patient/[id], invoice/[id],
@@ -32,18 +26,18 @@ export const roleLabels: Record<Role, string> = {
  */
 export const roleNav: Record<Role, NavItem[]> = {
   doctor: [
-    { label: "Queue", href: "/queue", icon: ListChecks },
-    { label: "Prescribe", href: "/prescribe", icon: Pill },
-    { label: "Rounds", href: "/rounds", icon: Stethoscope },
+    { key: "queue", href: "/queue", icon: ListChecks },
+    { key: "prescribe", href: "/prescribe", icon: Pill },
+    { key: "rounds", href: "/rounds", icon: Stethoscope },
   ],
-  nurse: [{ label: "Tasks", href: "/tasks", icon: ClipboardList }],
+  nurse: [{ key: "tasks", href: "/tasks", icon: ClipboardList }],
   billing: [
-    { label: "Register", href: "/register", icon: UserPlus },
-    { label: "Reconciliation", href: "/reconciliation", icon: Scale },
+    { key: "register", href: "/register", icon: UserPlus },
+    { key: "reconciliation", href: "/reconciliation", icon: Scale },
   ],
   admin: [
-    { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-    { label: "Users", href: "/users", icon: Users },
-    { label: "Settings", href: "/settings", icon: Settings },
+    { key: "dashboard", href: "/dashboard", icon: LayoutDashboard },
+    { key: "users", href: "/users", icon: Users },
+    { key: "settings", href: "/settings", icon: Settings },
   ],
 };
