@@ -15,12 +15,13 @@
 | Field | Value |
 |---|---|
 | Project | Hospital MIS for Indian clinics/hospitals |
-| Current phase | Phase 0 — Scaffolding (frontend foundation largely done; backend not yet started) |
-| Stack | Next.js 16 (App Router) + Tailwind v4 + Supabase (Postgres, Auth, Storage; `@supabase/ssr`) + Vercel |
+| Current phase | Phase 1 in progress — frontend building against mocks; backend not yet started |
+| Stack | Next.js 16 (App Router) + Tailwind v4 + Supabase (Postgres, Auth, Storage; `@supabase/ssr`) + Vercel; i18n via next-intl |
 | Architecture model | Cloud-hosted, single Supabase project, multi-tenant via `tenant_id` + RLS |
 | Offline/local-first | Deferred — see PRD Section 9 |
 | Team | Two tracks working contract-first in parallel: frontend and backend — see Workflow.md |
-| Dev workflow | Contract-first parallel development — see Workflow.md |
+| Dev workflow | Contract-first parallel development; frontend runs on mocks via `NEXT_PUBLIC_USE_MOCK` — see Workflow.md |
+| Repo | Single repo at root; frontend work on branch `prince/phase-0-frontend` (not yet merged to `main`) |
 | Last updated | 2026-08-08 |
 
 ---
@@ -48,11 +49,14 @@ Format: `[Date] Decision — Reason`
 - `[Revised]` Rejected Vercel for backend hosting — Vercel is serverless/stateless, cannot run a persistent process/DB; Supabase handles backend, Vercel handles frontend only
 - `[Established]` Multi-tenancy enforced via Postgres RLS + `tenant_id`, not app-layer checks — security boundary must be at the DB level
 - `[Established]` Contract-first workflow adopted — frontend and backend tracks build in parallel against agreed schema/function contracts + a mock-data switch, not sequential handoff
-- `[2026-08-08]` Scaffolded frontend at `apps/web` with Next.js 16 App Router + Tailwind v4 + TypeScript — matches Architecture.md folder structure (monorepo with `apps/web`)
-- `[2026-08-08]` Adopted `@supabase/ssr` for browser + server clients — the legacy auth-helpers are deprecated; SSR package is the current App Router pattern
-- `[2026-08-08]` Implemented Design.md tokens via Tailwind v4 CSS-first `@theme` (no `tailwind.config.js`) — v4 uses CSS-based config; same token values as Design.md §10
-- `[2026-08-08]` Form validation errors styled with `warning` (amber), not `critical` red — Design.md §2 reserves red exclusively for clinical urgency
-- `[2026-08-08]` Consolidated to a single git repo at the workspace root and connected it to the shared GitHub remote — replaces the nested per-app repo left by create-next-app
+- `[2026-08-08]` Scaffolded frontend at `apps/web` with Next.js 16 App Router + Tailwind v4 + TypeScript
+- `[2026-08-08]` Adopted `@supabase/ssr` for browser + server clients — the legacy auth-helpers are deprecated
+- `[2026-08-08]` Implemented Design.md tokens via Tailwind v4 CSS-first `@theme` (no `tailwind.config.js`)
+- `[2026-08-08]` Form validation errors styled with `warning` (amber), not `critical` red — Design.md §2 reserves red for clinical urgency
+- `[2026-08-08]` Consolidated to a single git repo at root and connected the shared GitHub remote
+- `[2026-08-08]` i18n via next-intl, cookie-based (no URL locale segments) — fits an authenticated app without restructuring routes; supports English, Hindi, Gujarati
+- `[2026-08-08]` Phase 1 UI built mock-first behind `USE_MOCK` (contract-first); frontend-proposed contracts drafted in `docs/contracts/` for the backend to confirm
+- `[2026-08-08]` Two data-fetch patterns in use: a client hook (`useQueue`, ready for Supabase Realtime) and server-component fetch (patient chart)
 
 ---
 
@@ -60,36 +64,42 @@ Format: `[Date] Decision — Reason`
 
 *(Update this section after every merged feature — this is the "what exists right now" ground truth)*
 
-### Done
-- **Frontend scaffold** (`apps/web`): Next.js 16 (App Router) + Tailwind v4 + TypeScript; six role route groups `(auth)/(doctor)/(nurse)/(billing)/(admin)/(patient)` with placeholder pages; temporary `/` route index and `/ui-preview` page.
-- **Supabase client boilerplate** (`lib/supabase/`): `client.ts` (browser), `server.ts` (server, cookie-based via `@supabase/ssr`), placeholder `types.ts` (to be replaced by generated types). `.env.example` documents required env vars.
-- **Design system**: Design.md tokens in Tailwind v4 `@theme`; Inter + Noto Sans Devanagari fonts; `cn()` util; shared UI primitives in `components/ui/` (Button, Card, Badge, Input, Skeleton, Spinner, EmptyState).
-- **App shell**: responsive sidebar + top bar (`components/shared/app-shell.tsx`) with per-role nav (`lib/navigation.ts`), wrapping the doctor/nurse/billing/admin route groups; minimal patient layout; auth pages standalone.
-- **Mock-data switch** (`lib/data/`): `USE_MOCK` flag + shared `AppError`/`Result<T>` types (Workflow.md §3).
+### Done (frontend, all against mocks)
+- **Phase 0 scaffold**: Next.js 16 + Tailwind v4 + TS at `apps/web`; six role route groups; Supabase client/server boilerplate; role-based app shell (sidebar + top bar).
+- **i18n**: next-intl (cookie-based), English + Hindi + Gujarati, top-bar language switcher, translation-driven shell.
+- **Design system + primitives** (`components/ui`): Button, Card, Badge, Input, Textarea, Skeleton, Spinner, EmptyState.
+- **Auth screens** (mock): login, onboarding.
+- **Feature screens** (mock): patient registration (billing), OPD queue (doctor; `useQueue` hook), patient chart (server-rendered, read-only), prescribe (doctor; dynamic medication list).
+- **Contracts drafted** (frontend-proposed) in `docs/contracts/`: auth-tenancy, patient-registration, opd-queue, patient-chart, prescriptions.
+- **Navigable slice**: register → queue → chart → prescribe.
 
 ### In Progress
-- Git consolidation + first push of Phase 0 frontend to the shared repo.
+- Awaiting direction / backend availability. Frontend is unblocked via mocks.
 
 ### Not Started
-- **Backend** (all pending): Supabase project creation, schema, migrations, RLS policies, triggers, Edge Functions, seed data.
-- **Phase 1**: real auth (login/onboarding UI wired to Supabase Auth), `middleware.ts` role routing, `useTenant()` against real data, i18n scaffold (Hindi + English).
-- **Vercel deploy** + CI/CD confirmation (Phase 0 remaining item).
-- Everything in Phase 2+.
+- **Backend** (all pending): Supabase project, schema, migrations, RLS policies, triggers, Edge Functions (incl. PDF generation), seed data.
+- Real auth session + `middleware.ts` role route guards (routes currently reachable directly; mock UI only).
+- Screens: billing/invoice, reconciliation, nurse tasks, admin (dashboard/users/settings).
+- Vercel deploy + CI/CD confirmation (Phase 0 remaining item).
+- **Integration**: flipping `USE_MOCK` off and wiring `lib/data/*` to the real backend.
 
 ---
 
 ## 5. Active Contracts (mirrors `docs/contracts/` — keep in sync)
 
-No feature contracts written yet. First contract to draft at the start of Phase 1 (Auth & Tenancy).
+Statuses: contract *drafted* = frontend-proposed spec exists; *mock built* = UI works against a mock; backend *not started*.
 
-| Feature | Contract status | Backend | Frontend | Integrated? |
+| Feature | Contract | Backend | Frontend | Integrated? |
 |---|---|---|---|---|
-| Auth & Tenancy | not started | not started | not started | no |
-| Patient Registration | not started | not started | not started | no |
-| OPD Queue | not started | not started | not started | no |
-| Prescriptions | not started | not started | not started | no |
+| Auth & Tenancy | drafted | not started | mock built | no |
+| Patient Registration | drafted | not started | mock built | no |
+| OPD Queue | drafted | not started | mock built | no |
+| Patient Chart | drafted | not started | mock built | no |
+| Prescriptions | drafted | not started | mock built | no |
 | Billing | not started | not started | not started | no |
 | Nurse Tasks | not started | not started | not started | no |
+
+Each contract lists open questions for the backend that must be resolved before integration.
 
 ---
 
@@ -97,11 +107,12 @@ No feature contracts written yet. First contract to draft at the start of Phase 
 
 *(Running list — add when discovered, remove when resolved with a note on how)*
 
-- Frontend is not yet integrated with a real backend — everything runs against mock data / placeholders. Supabase project does not exist yet.
-- Turbopack prints a "root" warning during build (a stray `package-lock.json` in the home directory was picked up). Should clear after git consolidation; set `turbopack.root` in `next.config.ts` if it persists.
-- Design.md token naming produces doubled text-color utilities (`text-text-primary` / `-secondary` / `-disabled`) — intentional but slightly awkward; rename later if desired.
-- Pushing to the shared repo requires collaborator write access + configured git credentials.
-- Supabase free-tier limits for pilot scale still unknown — open question from PRD Section 10.
+- The five drafted contracts are **frontend-proposed and awaiting backend confirmation** — their open questions (session/JWT claims, drug catalog, visit linkage, etc.) must be settled before integration, or `lib/data/*` will need rework.
+- Hindi + Gujarati strings are developer-written — need a native-speaker review before the pilot (especially domain terms like "reconciliation").
+- No real auth session or route guards yet — every role route is directly reachable. This is expected until the backend + middleware land.
+- `prince/phase-0-frontend` is several commits deep and not yet merged to `main` (which is only the initial README). Consider opening a PR as a checkpoint.
+- Supabase project not yet created; frontend not yet integrated with real data.
+- Turbopack prints a "root" warning (a stray `package-lock.json` in the home directory). Harmless; set `turbopack.root` if it becomes annoying.
 
 ---
 
@@ -122,6 +133,7 @@ No feature contracts written yet. First contract to draft at the start of Phase 
 - **Tier 1/2/3** — feature-activation levels (solo clinic / small hospital / large hospital), same codebase, gated by tenant flag
 - **Contract** — a short agreed spec (schema + function signature) written before a feature is built, enabling parallel work
 - **RLS** — Postgres Row-Level Security, the enforcement mechanism for multi-tenant data isolation
+- **USE_MOCK** — `NEXT_PUBLIC_USE_MOCK` flag; when true the UI runs against mock data in `lib/data/*` instead of the real backend
 
 ---
 
