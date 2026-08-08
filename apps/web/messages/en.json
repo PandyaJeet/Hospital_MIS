@@ -53,5 +53,26 @@
       "invalidEmail": "Enter a valid email address.",
       "passwordTooShort": "Password must be at least 6 characters."
     }
+  },
+  "register": {
+    "title": "Register patient",
+    "subtitle": "Add a new patient to your clinic",
+    "fullName": "Full name",
+    "phone": "Phone number",
+    "age": "Age",
+    "sex": "Sex",
+    "sexSelect": "Select…",
+    "sexMale": "Male",
+    "sexFemale": "Female",
+    "sexOther": "Other",
+    "submit": "Register",
+    "submitting": "Registering…",
+    "successTitle": "Patient registered",
+    "successBody": "{name} has been registered.",
+    "registerAnother": "Register another",
+    "required": "This field is required.",
+    "invalidPhone": "Enter a valid 10-digit phone number.",
+    "invalidAge": "Enter a valid age (1–120).",
+    "duplicate": "A patient with this phone number already exists."
   }
 }
