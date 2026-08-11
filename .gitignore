@@ -10,6 +10,13 @@ supabase/.branches/
 supabase/.temp/
 .supabase/
 
+# Ad-hoc debug output from CLI/verification runs. These routinely capture
+# auth-user dumps and seeded account emails, so they must never reach a commit
+# (rules.md §1.3 — no PII in logs, not even fixture PII).
+*.log
+_*.log
+*.out
+
 # ---------------------------------------------------------------------------
 # Node
 # ---------------------------------------------------------------------------

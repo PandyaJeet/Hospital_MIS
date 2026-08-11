@@ -28,5 +28,11 @@
     "noEmit": true
   },
   "include": ["supabase/**/*.ts"],
-  "exclude": ["node_modules", "apps"]
+  "//exclude": [
+    "supabase/functions is excluded because Edge Functions target the Deno",
+    "runtime, not Node: they use the Deno global, URL imports, and Deno's own",
+    "type resolution. Typechecking them with this Node-oriented config would",
+    "produce noise, not signal. They are checked by `deno check` / at deploy time."
+  ],
+  "exclude": ["node_modules", "apps", "supabase/functions"]
 }

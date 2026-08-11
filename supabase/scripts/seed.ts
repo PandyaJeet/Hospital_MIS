@@ -96,6 +96,87 @@ async function listSeedUsers(): Promise<User[]> {
 async function resetSeed(): Promise<void> {
   console.log('Resetting seed dataset...');
 
+  // Which tenants are we clearing? Resolve first, because everything below is
+  // scoped to them — a reset must never touch a tenant it did not create.
+  const { data: tenantRows, error: tErr } = await admin
+    .from('tenants')
+    .select('id')
+    .in('name', SEED_TENANT_NAMES);
+  if (tErr) fail('resolving seed tenants', tErr.message);
+  const tenantIds = (tenantRows ?? []).map((t) => t.id as string);
+
+  // Phase 2 clinical/billing data must go first, and in dependency order.
+  //
+  // This is not optional bookkeeping: the Phase 2 schema deliberately uses
+  // ON DELETE RESTRICT on the references that matter for medical records
+  // (patients -> tenants, clinical_notes.author_id -> profiles, visits.doctor_id
+  // -> profiles). That is correct for production — you must not be able to erase
+  // a clinician or a clinic that has patient history — but it means a reset has
+  // to dismantle the data explicitly rather than relying on cascades. Deleting
+  // the auth users first would fail on clinical_notes.author_id.
+  if (tenantIds.length > 0) {
+    // PHASE 3 PRE-STEP: break the bed <-> visit cycle before anything is deleted.
+    //
+    // `visits.bed_id` references `beds` ON DELETE RESTRICT, and
+    // `beds.current_visit_id` references `visits` ON DELETE RESTRICT. Each side
+    // therefore blocks deleting the other, and no ordering of DELETEs can resolve
+    // it — the links have to be nulled first. Both columns are deliberately
+    // outside every client grant (occupancy is an outcome of admitting, never
+    // something typed in), which is exactly why this runs with the service role.
+    //
+    // status and current_visit_id are set together because
+    // beds_occupancy_consistent requires them to agree: 'occupied' means "has an
+    // occupant" and nothing else may carry one.
+    {
+      const { error } = await admin
+        .from('beds')
+        .update({ status: 'available', current_visit_id: null })
+        .in('tenant_id', tenantIds);
+      if (error) fail('releasing seed beds', error.message);
+    }
+    {
+      const { error } = await admin
+        .from('visits')
+        .update({ bed_id: null })
+        .in('tenant_id', tenantIds);
+      if (error) fail('detaching seed visits from beds', error.message);
+    }
+
+    // Phase 2 + Phase 3 clinical/billing data, in dependency order.
+    //
+    // This is not optional bookkeeping: the schema deliberately uses
+    // ON DELETE RESTRICT on the references that matter for medical records
+    // (patients -> tenants, clinical_notes.author_id -> profiles, visits.doctor_id
+    // -> profiles, and every Phase 3 clinician reference — vitals.recorded_by,
+    // tasks.completed_by, medication_administrations.administered_by,
+    // lab_results.reported_by). That is correct for production — you must not be
+    // able to erase a clinician or a clinic that has patient history — but it means
+    // a reset has to dismantle the data explicitly rather than relying on cascades.
+    // Deleting the auth users first would fail on any one of them.
+    const ordered = [
+      'medication_administrations',  // -> prescription_items, visits, profiles
+      'lab_results',                 // -> lab_orders, profiles
+      'lab_orders',                  // -> visits, patients, profiles
+      'vitals',                      // -> visits, profiles
+      'tasks',                       // -> visits, profiles
+      'invoice_tax_lines',           // also cascades from invoices, listed for clarity
+      'invoices',
+      'billing_line_items',
+      'prescription_items',          // also cascades from prescriptions
+      'prescriptions',
+      'clinical_notes',
+      'beds',                        // links to visits already nulled above
+      'visits',
+      'patients',
+    ] as const;
+
+    for (const table of ordered) {
+      const { error } = await admin.from(table).delete().in('tenant_id', tenantIds);
+      if (error) fail(`clearing ${table}`, error.message);
+    }
+    console.log(`  cleared Phase 2 + Phase 3 clinical data for ${tenantIds.length} seed tenant(s)`);
+  }
+
   const existing = await listSeedUsers();
   for (const u of existing) {
     const { error } = await admin.auth.admin.deleteUser(u.id);
@@ -103,9 +184,8 @@ async function resetSeed(): Promise<void> {
   }
   console.log(`  removed ${existing.length} seed auth user(s) (profiles cascade)`);
 
-  // Tenants do not cascade from profiles (profiles.tenant_id is ON DELETE
-  // RESTRICT to protect real data), so they are removed explicitly. Safe now
-  // that no profile references them. Invites cascade with the tenant.
+  // Tenants last: profiles.tenant_id and patients.tenant_id are ON DELETE
+  // RESTRICT, so this only succeeds once both are gone. Invites cascade.
   const { data, error } = await admin
     .from('tenants')
     .delete()
@@ -194,6 +274,39 @@ async function main(): Promise<void> {
     } else {
       return fail('create_tenant_and_assign_admin', create);
     }
+
+    // --- 2b. billing / GST posture -----------------------------------------
+    // Applied through the ADMIN's own session, not the service role, so the
+    // column grants from 20260811060000 are exercised rather than bypassed.
+    const b = tenant.billing;
+    const { error: billErr } = await adminClient
+      .from('tenants')
+      .update({
+        gst_registered: b.gstRegistered,
+        gstin: b.gstin ?? null,
+        gst_state_code: b.gstStateCode ?? null,
+        default_consultation_fee: b.defaultConsultationFee,
+      })
+      .eq('id', tenantId);
+    if (billErr) fail(`setting billing settings for ${tenant.name}`, billErr.message);
+    console.log(
+      `  billing: ${b.gstRegistered ? `GST-registered (${b.gstin})` : 'not GST-registered'}, ` +
+        `consultation fee ${b.defaultConsultationFee}`,
+    );
+
+    // --- 2c. feature tier (Phase 3) ----------------------------------------
+    // SERVICE ROLE, unlike the billing settings above, and deliberately so:
+    // `tenants.tier` is unwritable from any client session including a tenant
+    // admin's, because an admin who could raise their own tier would make the
+    // Tier 2 IPD gate cosmetic (rules.md §4.3). Changing it is a platform-owner
+    // action. This line is that action for the dev dataset; in production it is a
+    // dashboard edit.
+    const { error: tierErr } = await admin
+      .from('tenants')
+      .update({ tier: tenant.tier })
+      .eq('id', tenantId);
+    if (tierErr) fail(`setting tier for ${tenant.name}`, tierErr.message);
+    console.log(`  tier: ${tenant.tier}${tenant.tier >= 2 ? ' (IPD/beds enabled)' : ' (OPD only)'}`);
 
     // --- 3. staff join via the real invite flow ----------------------------
     for (const staff of tenantStaff(tenant)) {

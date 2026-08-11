@@ -22,6 +22,31 @@ export interface SeedTenant {
   /** Used as the tenants.name value and as the reset key. */
   name: string;
   users: SeedUser[];
+  /**
+   * Billing/GST posture. One seed tenant is GST-registered and one is not, on
+   * purpose: the two produce genuinely different invoices (GST invoice with
+   * rate-wise tax vs. a bill of supply with no tax section at all), and both
+   * paths need a fixture to test against.
+   */
+  billing: {
+    gstRegistered: boolean;
+    gstin?: string;
+    gstStateCode?: string;
+    defaultConsultationFee: number;
+  };
+  /**
+   * Feature tier (Phase 3). One seed tenant is Tier 1 and one is Tier 2, on
+   * purpose: the Tier 2 IPD/bed gate has two sides, and asserting only the
+   * permitted side would leave the gate itself untested against the real project.
+   *
+   * Applied with the SERVICE ROLE, not through the admin's session, and that is
+   * the point rather than a convenience: `tenants.tier` is deliberately not
+   * writable by anyone from a client session (rules.md §4.3 — an admin who could
+   * raise their own tier would make every tier gate cosmetic). Setting it is a
+   * platform-owner action, performed via the dashboard in production and via the
+   * seed script here.
+   */
+  tier: 1 | 2 | 3;
 }
 
 const DOMAIN = 'hmis-seed.example.com';
@@ -35,6 +60,17 @@ export const SEED_TENANTS: SeedTenant[] = [
       { role: 'nurse', email: `a.nurse@${DOMAIN}`, fullName: 'Priya Nair' },
       { role: 'billing', email: `a.billing@${DOMAIN}`, fullName: 'Rohit Kumar' },
     ],
+    // GST-registered. GSTIN is a syntactically valid dummy (state code 27,
+    // Maharashtra) — not a real registration.
+    billing: {
+      gstRegistered: true,
+      gstin: '27AABCU9603R1ZM',
+      gstStateCode: '27',
+      defaultConsultationFee: 500,
+    },
+    // A solo clinic: employs a nurse who takes vitals, but runs no ward. The Tier 1
+    // half of the IPD gate.
+    tier: 1,
   },
   {
     name: 'Lotus Hospital (seed)',
@@ -44,6 +80,10 @@ export const SEED_TENANTS: SeedTenant[] = [
       { role: 'nurse', email: `b.nurse@${DOMAIN}`, fullName: 'Sunita Patil' },
       { role: 'billing', email: `b.billing@${DOMAIN}`, fullName: 'Imran Sheikh' },
     ],
+    // Not registered — the solo-practice case below the turnover threshold.
+    billing: { gstRegistered: false, defaultConsultationFee: 300 },
+    // A nursing home with beds. The Tier 2 half of the IPD gate.
+    tier: 2,
   },
 ];
 
