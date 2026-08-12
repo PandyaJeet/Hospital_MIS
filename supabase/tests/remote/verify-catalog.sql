@@ -200,6 +200,97 @@ with checks as (
          'lab_critical_ranges is seeded',
          case when (select count(*) from public.lab_critical_ranges) >= 10
               then 'PASS' else 'FAIL' end
+
+  union all
+
+  -- ---- 9. PHASE 4: RLS on the audit log and the Tier 3 placeholders -------
+  select 9,
+         'rls enabled: public.' || t,
+         case when coalesce((
+           select c.relrowsecurity from pg_class c
+           join pg_namespace n on n.oid = c.relnamespace
+           where n.nspname = 'public' and c.relname = t
+         ), false) then 'PASS' else 'FAIL' end
+  from unnest(array['audit_log', 'insurance_claims', 'ot_schedule', 'blood_units']) as t
+
+  union all
+
+  -- ---- 10. PHASE 4: every admin/reporting view is security_invoker --------
+  -- Seven views that aggregate revenue, staff activity and billing discrepancies. If
+  -- any lost security_invoker it would execute as postgres and report EVERY clinic's
+  -- numbers to whoever asked — the single worst failure available in this schema.
+  select 10,
+         'security_invoker: public.' || t,
+         case when exists (
+           select 1 from pg_class c
+           join pg_namespace n on n.oid = c.relnamespace
+           where n.nspname = 'public' and c.relname = t
+             and c.reloptions @> array['security_invoker=true']
+         ) then 'PASS' else 'FAIL' end
+  from unnest(array['admin_patient_volume_daily', 'admin_revenue_daily',
+                    'admin_occupancy_current', 'admin_staff_activity_daily',
+                    'admin_dashboard_summary', 'billing_reconciliation',
+                    'billing_reconciliation_summary']) as t
+
+  union all
+
+  -- ---- 11. PHASE 4: the audit log has no client write path ----------------
+  -- A log a user can write to is not a log.
+  select 11,
+         'no client ' || priv || ': audit_log',
+         case when not has_table_privilege('authenticated', 'public.audit_log', priv)
+              then 'PASS' else 'FAIL' end
+  from unnest(array['INSERT', 'UPDATE', 'DELETE']) as priv
+
+  union all
+
+  select 11,
+         'no client EXECUTE: record_audit_event()',
+         case when not has_function_privilege(
+           'authenticated',
+           'public.record_audit_event(uuid,text,text,uuid,jsonb)',
+           'EXECUTE'
+         ) then 'PASS' else 'FAIL' end
+
+  union all
+
+  -- ---- 12. PHASE 4: deactivation cannot be self-served --------------------
+  -- is_active is the whole access-revocation mechanism. If it were client-writable, a
+  -- deactivated user could reactivate themselves.
+  select 12,
+         'no client UPDATE: profiles.' || col,
+         case when not has_column_privilege('authenticated', 'public.profiles', col, 'UPDATE')
+              then 'PASS' else 'FAIL' end
+  from unnest(array['is_active', 'deactivated_at', 'role', 'tenant_id']) as col
+
+  union all
+
+  -- ---- 13. PHASE 4: the tenancy helpers are active-aware ------------------
+  -- The deactivation guarantee is entirely carried by these seven functions. If a
+  -- future migration rewrote one without `is_active`, deactivation would silently stop
+  -- working for every policy that helper backs — with no error anywhere.
+  select 13,
+         'active-aware helper: ' || fn,
+         case when pg_get_functiondef(fn::regprocedure) ilike '%is_active%'
+              then 'PASS' else 'FAIL' end
+  from unnest(array[
+    'public.current_tenant_id()',
+    'public.current_user_role()',
+    'public.is_tenant_admin()',
+    'public.is_tenant_staff()',
+    'public.has_tenant_role(text[])',
+    'public.current_tenant_tier()',
+    'public.tenant_has_tier(integer)'
+  ]) as fn
+
+  union all
+
+  -- ---- 14. PHASE 4: Tier 3 tables have no client DELETE -------------------
+  select 14,
+         'no client DELETE: ' || t,
+         case when not has_table_privilege('authenticated', 'public.' || t, 'DELETE')
+              then 'PASS' else 'FAIL' end
+  from unnest(array['insurance_claims', 'ot_schedule', 'blood_units']) as t
 )
 
 select

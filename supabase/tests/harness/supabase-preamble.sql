@@ -75,12 +75,30 @@ create table auth.users (
 -- client-readable in production either.
 grant select on auth.users to service_role;
 
+-- NULL-SAFE ON AN UNSET *OR EMPTY* CLAIMS SETTING.
+--
+-- The original form here was
+--   nullif(current_setting('request.jwt.claims', true)::json ->> 'sub', '')::uuid
+-- which handles the setting being ABSENT (current_setting returns NULL) but throws
+-- `invalid input syntax for type json` when it is present and EMPTY — which is what
+-- an owner/service-role context looks like after the session variable has been
+-- cleared.
+--
+-- Real Supabase `auth.uid()` returns NULL in that situation; it does not raise. So
+-- the old stub was a fidelity gap, and it hid a class of bug rather than exposing
+-- one: any trigger that calls auth.uid() and can fire from an owner-context write
+-- would fail locally for a reason that would never happen on the hosted project.
+-- Found in Phase 4 when the audit triggers started firing on service-role writes.
+--
+-- `nullif(setting, '')` first, so an empty string becomes NULL before the ::json
+-- cast ever sees it. auth.jwt() below already did this correctly; the three
+-- functions are now consistent.
 create or replace function auth.uid()
 returns uuid
 language sql
 stable
 as $$
-  select nullif(current_setting('request.jwt.claims', true)::json ->> 'sub', '')::uuid
+  select (nullif(current_setting('request.jwt.claims', true), '')::json ->> 'sub')::uuid
 $$;
 
 create or replace function auth.jwt()
@@ -96,7 +114,8 @@ returns text
 language sql
 stable
 as $$
-  select nullif(current_setting('request.jwt.claims', true)::json ->> 'email', '')
+  -- Same NULL-safety fix as auth.uid() above, for the same reason.
+  select nullif(nullif(current_setting('request.jwt.claims', true), '')::json ->> 'email', '')
 $$;
 
 grant execute on function auth.uid()   to anon, authenticated, service_role;

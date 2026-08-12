@@ -266,7 +266,15 @@ const { data } = await supabase.rpc('get_invoice_for_pdf', { p_invoice_id: invoi
 | `42501` | `error.code` | Editing an invoiced line; writing `subtotal`/`tax_total`/`invoice_id`/`is_auto`; a doctor inserting a charge; writing `tier` | "You don't have permission" → log; UI bug |
 | `23514` | `error.code` | Illegal status transition, or an inconsistent category/rate pair | "That invoice cannot change status" |
 | `23503` | `error.code` | Cross-tenant reference | Generic → log |
+| `INVOICE_NOT_FOUND` | `data` | `get_invoice_for_pdf()` given an unknown id, or another clinic's | "That invoice could not be found." |
 | `PDF_GENERATION_FAILED` | HTTP body | Edge Function failure | "Could not generate the invoice." |
+| `METHOD_NOT_ALLOWED` | HTTP body | Non-POST to `generate-invoice-pdf` | Not user-facing → log; client bug |
+| `NOT_FOUND` | HTTP body | The Edge Function could not resolve the invoice (its own gate, distinct from `INVOICE_NOT_FOUND` above) | "That invoice could not be found." |
+
+> `INVOICE_NOT_FOUND`, `METHOD_NOT_ALLOWED` and `NOT_FOUND` were added to this table in
+> Phase 4 after the error-code drift audit (`npm run audit:codes`) found all three
+> returned by code but documented nowhere. They are not new behaviour — they have been
+> reachable since Phase 2.
 
 ---
 

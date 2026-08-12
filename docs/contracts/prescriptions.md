@@ -288,6 +288,12 @@ const { data } = await supabase.rpc('get_prescription_for_pdf', { p_prescription
 | `42501` | `error.code` | Editing an issued prescription; nurse creating one; writing `status`; writing `drugs` | "You don't have permission" → log; UI bug |
 | `23503` | `error.code` | Item pointed at another tenant's prescription | Generic → log |
 | `PDF_GENERATION_FAILED` | HTTP body | Edge Function failure | "Could not generate the prescription." |
+| `METHOD_NOT_ALLOWED` | HTTP body | Non-POST to `generate-prescription-pdf` | Not user-facing → log; client bug |
+| `NOT_FOUND` | HTTP body | The Edge Function could not resolve the prescription | "That prescription could not be found." |
+
+> The two HTTP-body codes above were added in Phase 4 after the error-code drift audit
+> (`npm run audit:codes`) found them returned by the Edge Function but documented
+> nowhere. Not new behaviour — reachable since Phase 2.
 
 ---
 

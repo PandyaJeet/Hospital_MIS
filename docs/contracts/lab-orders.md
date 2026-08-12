@@ -456,6 +456,27 @@ in the dashboard, which cannot be done from SQL or the CLI here.
 | `42501` | `lab_orders` insert (nurse), `lab_results` insert, `status` writes | Policy or column-grant denial |
 | `23503` | `lab_orders` insert with another clinic's visit/patient | Composite FK |
 
+### Alert-dispatcher codes (webhook-facing, not for Prince)
+
+`notify-critical-lab-value` returns these to the **database webhook**, not to the app.
+Listed for completeness because the error-code drift audit (`npm run audit:codes`)
+requires every returned code to be documented somewhere, and because they are what you
+would see in the function logs if the alert path is ever wired up.
+
+| Code | HTTP | When |
+|---|---|---|
+| `UNAUTHORIZED` | 401 | Missing or wrong `x-alert-webhook-secret` |
+| `ALERT_DISPATCHER_MISCONFIGURED` | 500 | `CRITICAL_LAB_ALERT_SECRET` not set — **fails closed** |
+| `UNEXPECTED_PAYLOAD` | 400 | Not an INSERT on `lab_results`, or no row id |
+| `ALERT_LOOKUP_FAILED` | 502 | `get_critical_lab_alert_payload()` errored |
+| `ALERT_NOT_FOUND` | 404 | The result raised no alert |
+| `ALERT_DISPATCH_FAILED` | 500 | Unhandled fault |
+| `METHOD_NOT_ALLOWED` | 405 | Non-POST |
+
+A normal (non-alertable) result returns `200 { ok: true, dispatched: false, reason:
+'not_alertable' }` — a successful no-op, because Supabase webhooks cannot filter on a
+predicate and fire for every insert.
+
 **Not error codes, but the values you must branch on:** `critical_check_status` ∈
 {`evaluated`, `no_reference`, `unparseable_value`, `unit_mismatch`,
 `evaluation_failed`}.
