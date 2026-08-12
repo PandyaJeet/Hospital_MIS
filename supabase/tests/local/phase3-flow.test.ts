@@ -64,6 +64,57 @@ const t2Case = await openVisit(T2, 'Tier2 Patient', '9900000001', 'penicillin');
 check('both clinics have an open visit', !!t1Case.visitId && !!t2Case.visitId);
 
 /* ========================================================================== */
+section('0b. Phase 2 regression guard — deleting an invoice releases its lines');
+
+// Guards the defect fixed in 20260811071300, which lived in Phase 2 and was found
+// during Phase 3 closeout by running `db:seed:reset` twice.
+//
+// billing_line_items -> invoices is a COMPOSITE FK on (invoice_id, tenant_id).
+// Phase 2 gave it a bare ON DELETE SET NULL intending "a deleted draft invoice
+// releases its lines back to pending", but a bare SET NULL on a composite FK nulls
+// EVERY referencing column — including the NOT NULL tenant_id — so the delete could
+// not complete at all. The fix adds the column list: SET NULL (invoice_id).
+//
+// Lives in this suite rather than Phase 2's because this is the suite actively
+// maintained alongside the fix; the provenance is recorded here so it is not
+// mistaken for a Phase 3 concern.
+{
+  const guard = await openVisit(T2, 'Invoice FK Guard', '9900000008');
+  // queued -> in_consultation -> done. set_visit_status() refuses to skip the
+  // middle state, and entering in_consultation is also what raises the automatic
+  // consultation charge this invoice needs to have a line at all.
+  await h.asUser(T2.doctor, async (sql) => {
+    const mid = await rpc(sql, 'set_visit_status', '$1, $2', [guard.visitId, 'in_consultation']);
+    checkEqual('the encounter enters consultation', mid.ok, true);
+    const end = await rpc(sql, 'set_visit_status', '$1, $2', [guard.visitId, 'done']);
+    checkEqual('...and is completed', end.ok, true);
+  });
+
+  const invoiceId = await h.asUser(T2.billing, async (sql) => {
+    const inv = await rpc(sql, 'create_invoice_for_visit', '$1', [guard.visitId]);
+    check('an invoice is raised for the encounter', inv.ok === true, JSON.stringify(inv));
+    return inv.invoice_id as string;
+  });
+
+  const attached = await h.asOwner(
+    `select id, tenant_id from public.billing_line_items where invoice_id = $1`, [invoiceId]);
+  check('...pulling at least one line onto it', attached.length > 0);
+
+  // The delete itself is the assertion: before the fix this raised 23502.
+  await h.asOwner(`delete from public.invoices where id = $1`, [invoiceId]);
+  check('** deleting the invoice SUCCEEDS (bare SET NULL on a composite FK could not) **', true);
+
+  const released = await h.asOwner(
+    `select id, invoice_id, tenant_id from public.billing_line_items where id = any($1)`,
+    [attached.map((r) => r.id)]);
+  checkEqual('...every line survived', released.length, attached.length);
+  check('** ...released back to pending (invoice_id null) **',
+    released.every((r) => r.invoice_id === null));
+  check('** ...with tenant_id intact — the column the old action tried to null **',
+    released.every((r) => r.tenant_id === T2.tenantId));
+}
+
+/* ========================================================================== */
 section('1. vitals — ** EVERY measurement column is nullable **');
 
 // The single most important assertion in this file. A nurse mid-round with nothing
@@ -216,7 +267,7 @@ section('2b. rounds_overview — the view the doctor reads');
 await h.asUser(T2.doctor, async (sql) => {
   const rows = await sql(
     `select visit_id, patient_name, patient_number, temperature_c, pulse_bpm, spo2_percent,
-            last_vitals_at, vitals_age_seconds, pending_tasks
+            last_vitals_at, vitals_age_seconds, vitals_row_count, vitals_component_times, pending_tasks
        from public.rounds_overview where visit_id=$1`, [roundsCase.visitId]);
   checkEqual('the doctor gets exactly one row for the encounter', rows.length, 1);
   const r = rows[0];
@@ -226,6 +277,49 @@ await h.asUser(T2.doctor, async (sql) => {
   check('...with a computed staleness in seconds', Number(r.vitals_age_seconds) >= 0);
   check('...and the patient identity for the header', typeof r.patient_name === 'string');
 });
+
+// Regression guard for the defect the REMOTE suite caught (fixed in 20260811071200):
+// each measurement must be the latest known NON-NULL value for the encounter, not
+// whatever happened to be in the newest row. This local fixture reproduces the
+// partial-entry sequence that exposed it — a temperature alone, then a systolic
+// alone — which the original section above did not, because its last insert
+// happened to be the most complete one.
+{
+  const partial = await openVisit(T2, 'Partial Vitals', '9900000009');
+  await h.asUser(T2.nurse, async (sql) => {
+    await sql(
+      `insert into public.vitals (tenant_id, visit_id, recorded_by, recorded_at, temperature_c)
+       values ($1,$2,$3, now() - interval '20 minutes', 38.1)`,
+      [T2.tenantId, partial.visitId, T2.nurse.id]);
+    // A separate, later row carrying ONLY the BP — the cuff finally freed up.
+    await sql(
+      `insert into public.vitals (tenant_id, visit_id, recorded_by, bp_systolic, bp_diastolic)
+       values ($1,$2,$3, 148, 92)`,
+      [T2.tenantId, partial.visitId, T2.nurse.id]);
+  });
+
+  await h.asUser(T2.doctor, async (sql) => {
+    const r = (await sql(
+      `select temperature_c, bp_systolic, bp_diastolic, pulse_bpm,
+              vitals_row_count, vitals_component_times
+         from public.rounds_overview where visit_id=$1`, [partial.visitId]))[0];
+    checkEqual('** a temperature from an EARLIER row survives on the rounds card **',
+      Number(r.temperature_c), 38.1);
+    checkEqual('** ...alongside the BP from the newest row **', Number(r.bp_systolic), 148);
+    checkEqual('...and its diastolic', Number(r.bp_diastolic), 92);
+    // The property that makes a blank field safe to read.
+    checkEqual('a never-recorded measurement is still NULL, unambiguously', r.pulse_bpm, null);
+    checkEqual('...across two rows', Number(r.vitals_row_count), 2);
+
+    const times = r.vitals_component_times as Record<string, string>;
+    check('each populated value carries its own timestamp',
+      !!times.temperature_c && !!times.bp_systolic, JSON.stringify(times));
+    check('...unpopulated ones are absent from the map entirely',
+      !('pulse_bpm' in times) && !('spo2_percent' in times), JSON.stringify(times));
+    check('...so a composite card is detectable: the times differ',
+      times.temperature_c !== times.bp_systolic);
+  });
+}
 
 // The reason vitals values were NOT cached onto `visits`: billing can read visits.
 // Through the view, the vitals policy still excludes them.

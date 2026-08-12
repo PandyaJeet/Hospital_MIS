@@ -316,10 +316,14 @@ export type SetVisitStatusResult =
 
 ## 9. Deliberately not in Phase 2
 
+> **Two rows in this table were corrected after Phase 3 shipped.** Both are marked
+> **✅ DONE IN PHASE 3** below rather than deleted, so the change of plan stays
+> visible instead of looking like it was always this way.
+
 | Not available | Why |
 |---|---|
-| **Realtime publication** for `visits` | The policies support it and Realtime respects RLS, but the table has not been added to the `supabase_realtime` publication yet. Ping Jeet when you want to wire the subscription — it is a one-line migration |
-| IPD admit/discharge | Phase 3. `visits.status` extends additively via the named `visits_status_valid` constraint; no rename will be needed |
+| ~~**Realtime publication** for `visits`~~ | **✅ DONE IN PHASE 3.** `visits` is now in the `supabase_realtime` publication, together with `vitals`, `tasks`, `lab_orders` and `lab_results` (migration `20260811071100`). Subscribe away. Note that `visits` now also emits a change when a nurse records vitals, because the rounds trigger writes `visits.last_vitals_at` — that is deliberate, and it is what makes a queue or rounds subscription update without a separate fetch. Verified on the hosted project by `npm run verify:catalog` |
+| ~~IPD admit/discharge~~ | **✅ DONE IN PHASE 3, BUT NOT THE WAY THIS ROW PREDICTED.** This said `visits.status` would extend additively via `visits_status_valid`. It did not: IPD state landed in a **new `care_setting` column** (`opd` \| `ipd`) plus `admitted_at`, `discharged_at`, `bed_id`, and `visits_status_valid` is **unchanged**. Reason: `status` tracks the *consultation* lifecycle and admission is an orthogonal axis — folding them together forces states like "in_consultation AND admitted" into one enum value. **A discharge does not write `visits.status`.** "Currently an inpatient" is `care_setting = 'ipd' and discharged_at is null`. Full detail in `docs/contracts/ipd-beds.md` |
 | Note version history | An edit overwrites in place. Amendment history belongs with the Phase 4 audit log; recorded as a risk in `Memory.md` §6 |
 | Voice dictation | PRD §6.1 wants it; it is a client-side concern, no backend dependency |
 | Order sets / templates as data | `template_type` is free text this phase. A template *library* table would be Phase 3 |
@@ -335,3 +339,16 @@ export type SetVisitStatusResult =
 | Remote | `npm run test:opd:remote` | **102/102** |
 
 Covered here specifically: token starts at 1 and increments; same-patient double check-in refused with the existing visit returned; `queued → done` rejected with `from`/`to`; consultation timestamps stamped; wait time computable; **a completely empty clinical note saves** (asserted both locally and over real PostgREST); multiple notes per visit; nurse cannot author a note; billing sees zero notes while doctor and nurse see them; cross-tenant visit invisible and un-advanceable.
+
+### Phase 3 additions to this table
+
+`visits` gained six columns in Phase 3. None is client-writable, and none changes any behaviour documented above.
+
+| Column | Meaning | Contract |
+|---|---|---|
+| `care_setting` | `opd` \| `ipd` | `ipd-beds.md` |
+| `admitted_at` / `discharged_at` | Admission window; nullable | `ipd-beds.md` |
+| `bed_id` | Bed this admission used; **retained after discharge** | `ipd-beds.md` |
+| `last_vitals_at` | Server-derived freshness of the latest observation | `vitals-and-rounds.md` |
+
+One consequence worth knowing when you build the queue: because the vitals trigger touches `visits`, a queue subscription will receive change events for encounters whose *queue* state did not change. Re-render from the row you receive rather than assuming a change means the status moved.

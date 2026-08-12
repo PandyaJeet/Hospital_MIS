@@ -267,7 +267,24 @@ async function main(): Promise<void> {
       console.log(`  tenant created -> ${tenantId}`);
     } else if (create.code === 'ALREADY_IN_TENANT') {
       // Idempotent re-run: the admin already founded it on a previous pass.
-      const { data, error } = await adminClient.from('profiles').select('tenant_id').maybeSingle();
+      //
+      // `.eq('id', ...)` is load-bearing, not defensive. A tenant ADMIN can read
+      // every profile in their own clinic (Phase 1 policy), so an unfiltered
+      // select returns 4 rows and .maybeSingle() fails with "JSON object
+      // requested, multiple (or no) rows returned" — which is what this branch
+      // actually did until now. It went unnoticed because the branch is
+      // unreachable on a first run (the RPC succeeds) and unreachable under
+      // --reset (the users are deleted first), so only a plain re-run against a
+      // populated project hits it. Same shape as the Phase 1 invites bug recorded
+      // in Memory.md §6, and the same lesson: idempotent tooling has to be run
+      // twice to actually be tested.
+      const adminId = ids.get(adminUser.email);
+      if (!adminId) fail('resolving admin user id', `no id recorded for ${adminUser.email}`);
+      const { data, error } = await adminClient
+        .from('profiles')
+        .select('tenant_id')
+        .eq('id', adminId)
+        .maybeSingle();
       if (error || !data?.tenant_id) fail('reading existing tenant for admin', error?.message ?? 'not found');
       tenantId = data.tenant_id as string;
       console.log(`  tenant already exists -> ${tenantId}`);
@@ -319,10 +336,37 @@ async function main(): Promise<void> {
         console.log(`  ${staff.role.padEnd(7)} ${staff.email} already a member`);
         continue;
       }
-      if (!invite.ok) return fail(`create_invite for ${staff.email}`, invite);
+
+      let token = invite.token as string | undefined;
+
+      // The second recovery path a plain re-run needs. create_invite() refuses to
+      // mint a second live invite for the same email and returns
+      // INVITE_ALREADY_EXISTS — correctly, since silently issuing another token
+      // would leave two working links. It deliberately does NOT return the token
+      // in that error (an error path must not re-expose a capability), but the
+      // ADMIN can read `invites` in their own tenant, so the token is recoverable
+      // from the invite_id it does return.
+      //
+      // Without this, a re-run interrupted between create_invite and
+      // accept_invite could never complete: every subsequent attempt would fail on
+      // an invite that already exists and cannot be re-minted.
+      if (!token && invite.code === 'INVITE_ALREADY_EXISTS') {
+        const { data, error } = await adminClient
+          .from('invites')
+          .select('token')
+          .eq('id', invite.invite_id as string)
+          .maybeSingle();
+        if (error || !data?.token) {
+          return fail(`recovering pending invite for ${staff.email}`, error?.message ?? invite);
+        }
+        token = data.token as string;
+        console.log(`  ${staff.role.padEnd(7)} ${staff.email} reusing pending invite`);
+      }
+
+      if (!token) return fail(`create_invite for ${staff.email}`, invite);
 
       const staffClient = await sessionFor(staff.email);
-      const accepted = await callRpc(staffClient, 'accept_invite', { p_token: invite.token });
+      const accepted = await callRpc(staffClient, 'accept_invite', { p_token: token });
       await staffClient.auth.signOut();
 
       if (!accepted.ok) return fail(`accept_invite for ${staff.email}`, accepted);

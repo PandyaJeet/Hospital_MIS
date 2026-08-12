@@ -1496,8 +1496,11 @@ export type Database = {
           visit_status: string | null
           visit_type: string | null
           vitals_age_seconds: number | null
+          vitals_component_times: Json | null
+          vitals_notes: string | null
           vitals_recorded_at: string | null
           vitals_recorded_by: string | null
+          vitals_row_count: number | null
           ward_name: string | null
         }
         Relationships: [

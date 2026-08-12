@@ -96,6 +96,33 @@ switch (subcommand) {
     runAndPrint(['db', 'diff', '--db-url', dbUrl, ...rest]);
     break;
 
+  /**
+   * Ad-hoc SQL against the hosted project.
+   *
+   *   npm run db:query -- "select 1"
+   *   npm run db:query -- --file supabase/scripts/verify-phase3.sql
+   *
+   * WHY THIS EXISTS: some guarantees live in the Postgres catalogue rather than in
+   * any table PostgREST exposes — publication membership for Realtime, and whether
+   * a REVOKE actually landed. Neither is reachable through supabase-js, `psql` is
+   * not installed on this machine, and the Management API needs a personal access
+   * token we do not have. Routing the CLI's own query command through this wrapper
+   * keeps the password out of shell history and scrubbed from output, exactly like
+   * every other subcommand here.
+   *
+   * INTENDED FOR READ-ONLY VERIFICATION. Nothing enforces that — it is a raw query
+   * runner, so treat it as one. Schema changes belong in a migration
+   * (rules.md §5.6); using this to mutate the hosted schema would put the project
+   * out of lockstep with migrations/ and is exactly what `db push` is for.
+   */
+  case 'query':
+    if (rest.length === 0) {
+      console.error('Usage: npm run db:query -- "<sql>"   |   npm run db:query -- --file <path.sql>');
+      process.exit(1);
+    }
+    runAndPrint(['db', 'query', '--db-url', dbUrl, ...rest]);
+    break;
+
   case 'types': {
     const { stdout, stderr, status } = run([
       'gen', 'types', 'typescript', '--db-url', dbUrl, '--schema', 'public',
