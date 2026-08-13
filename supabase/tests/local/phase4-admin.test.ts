@@ -116,6 +116,127 @@ section('0b. The Phase 2 invoice invariants the revenue view depends on');
 }
 
 /* ========================================================================== */
+section('0c. REGRESSION — one LIVE invoice per visit (the Phase 5 concurrency finding)');
+
+// ---------------------------------------------------------------------------
+// This section exists because of a bug that shipped and was caught late.
+//
+// The Phase 5 concurrency suite fired two simultaneous create_invoice_for_visit()
+// calls at one visit and BOTH succeeded: the winner took the pending charge, the
+// loser inserted an empty header that consumed a number in the gapless tax series.
+// The RPC's advisory lock was taken AFTER its duplicate check, so both callers
+// passed the check before either serialised.
+//
+// Migration 20260811090000 fixed it in two layers, and this section guards both,
+// because each can regress independently and neither is visible to a sequential test:
+//
+//   * the partial unique index — the structural invariant, which holds against ANY
+//     writer including a service-role backfill that never calls the RPC;
+//   * the lock ORDERING inside the RPC — which is what keeps the documented
+//     INVOICE_ALREADY_EXISTS envelope instead of a raw 23505 leaking to the client.
+//
+// The ordering assertion reads pg_proc.prosrc rather than exercising a race, since
+// PGlite has a single backend and cannot produce one (see concurrency.remote.test.ts).
+// It is a source-level guard on purpose: a future CREATE OR REPLACE that moved the
+// lock back would silently reintroduce the exact bug, and nothing else would notice.
+// ---------------------------------------------------------------------------
+{
+  const idx = await h.asOwner(
+    `select i.indisunique                              as is_unique,
+            pg_get_expr(i.indpred, i.indrelid)         as predicate,
+            pg_get_indexdef(i.indexrelid)              as definition
+       from pg_index i
+       join pg_class c on c.oid = i.indexrelid
+       join pg_namespace n on n.oid = c.relnamespace
+      where n.nspname = 'public'
+        and c.relname = 'invoices_one_live_per_visit_idx'`);
+
+  checkEqual('** invoices_one_live_per_visit_idx exists **', idx.length, 1);
+  checkEqual('...and is UNIQUE', idx[0]?.is_unique, true);
+  check('...and is PARTIAL on status <> cancelled — a cancelled invoice must not block re-invoicing',
+    String(idx[0]?.predicate ?? '').includes('cancelled'), String(idx[0]?.predicate));
+  check('...keyed on visit_id', String(idx[0]?.definition ?? '').includes('visit_id'),
+    String(idx[0]?.definition));
+
+  // The lock must guard the whole check-and-insert, not just the number allocation.
+  const src = await h.asOwner(
+    `select position('pg_advisory_xact_lock' in p.prosrc) as lock_pos,
+            position('INVOICE_ALREADY_EXISTS' in p.prosrc) as check_pos
+       from pg_proc p
+       join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname = 'public' and p.proname = 'create_invoice_for_visit'`);
+  const lockPos = Number(src[0]?.lock_pos);
+  const checkPos = Number(src[0]?.check_pos);
+  check('both the lock and the duplicate check are present in the RPC (assertion is not vacuous)',
+    lockPos > 0 && checkPos > 0, `lock@${lockPos} check@${checkPos}`);
+  check('** the advisory lock is taken BEFORE the duplicate check — the ordering that was the bug **',
+    lockPos > 0 && checkPos > 0 && lockPos < checkPos, `lock@${lockPos} check@${checkPos}`);
+
+  // ---- and now the invariant itself, exercised rather than read ----
+  const dup = await fullEncounter(T1, 'Dup Invoice Guard', '9720000001');
+
+  // The RPC still refuses a second invoice with its documented envelope.
+  await h.asUser(T1.billing, async (sql) => {
+    const again = await rpc(sql, 'create_invoice_for_visit', '$1', [dup.visitId]);
+    checkEqual('a second create_invoice_for_visit() is refused', again.ok, false);
+    checkEqual('** ...with the documented INVOICE_ALREADY_EXISTS, not a raw constraint error **',
+      again.code, 'INVOICE_ALREADY_EXISTS');
+    checkEqual('...naming the invoice that already exists', again.invoice_id, dup.invoiceId);
+  });
+
+  // The structural layer: a writer that bypasses the RPC entirely. `authenticated`
+  // has no INSERT grant on invoices, so this is the owner/service-role path — exactly
+  // the writer the index exists to constrain.
+  //
+  // A FREE invoice_number is used deliberately. Reusing a taken one would raise 23505
+  // from invoices_number_unique_per_tenant instead, and the test would pass for the
+  // wrong reason while proving nothing about the new index.
+  const nextNumber = Number((await h.asOwner(
+    `select coalesce(max(invoice_number), 0) + 1 as n from public.invoices where tenant_id = $1`,
+    [T1.tenantId]))[0].n);
+
+  const insertSecond = (num: number) => h.asOwner(
+    `insert into public.invoices (tenant_id, patient_id, visit_id, invoice_number, status)
+     values ($1, $2, $3, $4, 'draft') returning id`,
+    [T1.tenantId, dup.patientId, dup.visitId, num]);
+
+  let blockedBy = '';
+  try {
+    await insertSecond(nextNumber);
+    check('** a direct second live invoice for the same visit is rejected **', false,
+      'the insert SUCCEEDED — the index is not enforcing');
+  } catch (err) {
+    const e = err as { code?: string; constraint?: string; message?: string };
+    blockedBy = e.constraint ?? e.message ?? '';
+    checkEqual('** a direct second live invoice for the same visit is rejected (23505) **',
+      e.code, '23505');
+    check('** ...by invoices_one_live_per_visit_idx specifically, not by the number series **',
+      blockedBy.includes('invoices_one_live_per_visit_idx'), blockedBy);
+  }
+
+  // The predicate must be partial, or a cancelled invoice would permanently block
+  // re-billing a visit. Nothing else in the suite covers this direction, and an
+  // over-broad index would look correct in every "duplicate rejected" assertion above.
+  await h.asUser(T1.billing, (sql) =>
+    sql(`update public.invoices set status='cancelled' where id=$1`, [dup.invoiceId]));
+
+  let reinvoiced = '';
+  try {
+    reinvoiced = String((await insertSecond(nextNumber))[0].id);
+    check('** ...but once the first invoice is CANCELLED, the visit can be invoiced again **',
+      reinvoiced.length > 0);
+  } catch (err) {
+    check('** ...but once the first invoice is CANCELLED, the visit can be invoiced again **',
+      false, `still blocked: ${(err as { message?: string }).message}`);
+  }
+
+  // Leave the fixture as the later reconciliation and dashboard sections expect: this
+  // visit contributes no live invoice and no released pending charges. The header
+  // inserted above never claimed any line items, so removing it releases nothing.
+  if (reinvoiced) await h.asOwner(`delete from public.invoices where id=$1`, [reinvoiced]);
+}
+
+/* ========================================================================== */
 section('1. ** user deactivation revokes database access immediately **');
 
 await h.asUser(T1.admin, async (sql) => {

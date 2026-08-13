@@ -23,10 +23,12 @@
     "test:isolation3": "tsx supabase/tests/local/phase3-isolation.test.ts",
     "test:phase3:remote": "tsx supabase/tests/remote/phase3-flow.remote.test.ts",
     "test:phase4": "tsx supabase/tests/local/phase4-admin.test.ts",
-    "test:local": "npm run typecheck && npm run test:rls && npm run test:onboarding && npm run test:opd && npm run test:isolation2 && npm run test:phase3 && npm run test:isolation3 && npm run test:phase4",
+    "test:pentest": "tsx supabase/tests/local/phase5-pentest.test.ts",
+    "test:concurrency": "tsx supabase/tests/remote/concurrency.remote.test.ts",
+    "test:local": "npm run typecheck && npm run test:rls && npm run test:onboarding && npm run test:opd && npm run test:isolation2 && npm run test:phase3 && npm run test:isolation3 && npm run test:phase4 && npm run test:pentest",
     "test:rls:remote": "tsx supabase/tests/remote/rls-isolation.remote.test.ts",
     "test:opd:remote": "tsx supabase/tests/remote/opd-flow.remote.test.ts",
-    "test:remote": "npm run test:rls:remote && npm run test:opd:remote",
+    "test:remote": "npm run test:rls:remote && npm run test:opd:remote && npm run test:phase3:remote && npm run test:concurrency",
     "verify:remote": "npm run db:seed:reset && npm run test:remote"
   },
   "devDependencies": {

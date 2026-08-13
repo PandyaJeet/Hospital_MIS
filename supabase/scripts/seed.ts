@@ -184,8 +184,43 @@ async function resetSeed(): Promise<void> {
   }
   console.log(`  removed ${existing.length} seed auth user(s) (profiles cascade)`);
 
-  // Tenants last: profiles.tenant_id and patients.tenant_id are ON DELETE
-  // RESTRICT, so this only succeeds once both are gone. Invites cascade.
+  if (tenantIds.length > 0) {
+    // PHASE 4 PRE-STEP 1: delete invites EXPLICITLY, before the audit purge below.
+    //
+    // `invites.tenant_id` is ON DELETE CASCADE, so these would otherwise be removed
+    // by the tenant delete itself — and `audit_invites_change()` fires on DELETE to
+    // record `invite.revoked`, which would try to INSERT an audit row referencing the
+    // very tenant being deleted, inside that same statement. Doing it here means those
+    // rows are generated now and purged in the step below, in a defined order.
+    {
+      const { error } = await admin.from('invites').delete().in('tenant_id', tenantIds);
+      if (error) fail('clearing seed invites', error.message);
+    }
+
+    // PHASE 4 PRE-STEP 2: purge the audit trail LAST of all the children.
+    //
+    // This is what the reported bug was: `audit_log.tenant_id` is ON DELETE RESTRICT
+    // (deliberately — see migration 20260811080700), so a tenant that has logged even
+    // one audited action can never be deleted while its rows remain. One
+    // `create_invite()` call is enough, which means every tenant, immediately.
+    //
+    // It goes last because everything above generates audit rows: role changes,
+    // invite creation and acceptance, tenant settings, and the invite deletions in
+    // pre-step 1. Purging earlier would leave a fresh trail behind it.
+    //
+    // Only the service role can do this — `audit_log` has no client write grant at
+    // all, by design. That is exactly why a real tenant-offboarding procedure has to
+    // be a platform-owner action, and this is the reference for what it must do.
+    {
+      const { error } = await admin.from('audit_log').delete().in('tenant_id', tenantIds);
+      if (error) fail('purging seed audit log', error.message);
+    }
+    console.log('  purged seed invites + audit trail (audit_log is ON DELETE RESTRICT)');
+  }
+
+  // Tenants last: 17 of the 18 FKs pointing at `tenants` are ON DELETE RESTRICT
+  // (everything holding history), so this only succeeds once every one of those
+  // children is gone. `invites` is the sole CASCADE and is cleared above anyway.
   const { data, error } = await admin
     .from('tenants')
     .delete()

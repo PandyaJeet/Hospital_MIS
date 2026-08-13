@@ -291,6 +291,134 @@ with checks as (
          case when not has_table_privilege('authenticated', 'public.' || t, 'DELETE')
               then 'PASS' else 'FAIL' end
   from unnest(array['insurance_claims', 'ot_schedule', 'blood_units']) as t
+
+  union all
+
+  -- ---- 15. audit_log.tenant_id must stay ON DELETE RESTRICT ---------------
+  -- This one exists because the obvious "fix" for a blocked tenant deletion is to
+  -- reach for CASCADE, and doing so would be wrong in a way nothing else would catch:
+  -- it would not make tenant deletion work (17 other FKs to tenants also RESTRICT) —
+  -- it would only make the audit trail vanish silently while the clinical data still
+  -- blocked. Reasoning in migration 20260811080700 and on the constraint's own comment.
+  select 15,
+         'audit_log.tenant_id is ON DELETE RESTRICT (not CASCADE)',
+         case when exists (
+           select 1 from pg_constraint c
+           where c.conname = 'audit_log_tenant_id_fkey'
+             and c.conrelid = 'public.audit_log'::regclass
+             and c.confdeltype = 'r'
+         ) then 'PASS' else 'FAIL' end
+
+  union all
+
+  -- ...and that the decision is actually documented where the next person will look.
+  select 15,
+         'audit_log.tenant_id FK carries its rationale as a comment',
+         case when coalesce(length(obj_description(
+                (select oid from pg_constraint
+                  where conname = 'audit_log_tenant_id_fkey'
+                    and conrelid = 'public.audit_log'::regclass),
+                'pg_constraint')), 0) > 100
+              then 'PASS' else 'FAIL' end
+
+  union all
+
+  -- ---- 16. PHASE 5: the duplicate-invoice fix (20260811090000) ------------
+  -- The Phase 5 concurrency suite proved two simultaneous create_invoice_for_visit()
+  -- calls could both succeed, producing a second invoice that consumed a number in the
+  -- gapless tax series. Both layers of the fix are verified here because both are
+  -- invisible to any sequential test.
+  select 16,
+         'invoices_one_live_per_visit_idx exists, is unique and is partial',
+         case when exists (
+           select 1 from pg_index i
+           join pg_class c on c.oid = i.indexrelid
+           join pg_namespace n on n.oid = c.relnamespace
+           where n.nspname = 'public'
+             and c.relname = 'invoices_one_live_per_visit_idx'
+             and i.indisunique
+             and pg_get_expr(i.indpred, i.indrelid) ilike '%cancelled%'
+         ) then 'PASS' else 'FAIL' end
+
+  union all
+
+  -- The ordering IS the bug. A future CREATE OR REPLACE that moved the lock back below
+  -- the duplicate check would reintroduce the race with no error anywhere, so the
+  -- position is asserted directly against the deployed function body.
+  select 16,
+         'create_invoice_for_visit takes its advisory lock BEFORE the duplicate check',
+         case when (
+           select position('pg_advisory_xact_lock' in p.prosrc) > 0
+              and position('INVOICE_ALREADY_EXISTS' in p.prosrc) > 0
+              and position('pg_advisory_xact_lock' in p.prosrc)
+                < position('INVOICE_ALREADY_EXISTS' in p.prosrc)
+           from pg_proc p
+           join pg_namespace n on n.oid = p.pronamespace
+           where n.nspname = 'public' and p.proname = 'create_invoice_for_visit'
+         ) then 'PASS' else 'FAIL' end
+
+  union all
+
+  -- The live data, not just the schema: proof no duplicate survives on this project.
+  select 16,
+         'no visit on this project has more than one live invoice',
+         case when not exists (
+           select 1 from public.invoices
+           where status <> 'cancelled'
+           group by visit_id having count(*) > 1
+         ) then 'PASS' else 'FAIL' end
+
+  union all
+
+  -- ---- 17. PHASE 5: catalogue-DRIVEN coverage, not hand-listed ------------
+  -- Groups 2 and 9 above check RLS on named tables, phase by phase. That is exactly
+  -- the pattern Phase 5 set out to replace: a hand-maintained list silently stops
+  -- covering the schema the moment someone adds a table and forgets the list. These
+  -- checks enumerate `public` from the catalogue instead, so a new table or view is
+  -- covered the day it is created, whether or not anyone remembers this file.
+  --
+  -- Emitted one row per object so a failure names the offender rather than a count.
+  select 17,
+         'rls enabled (catalogue-driven): public.' || c.relname::text,
+         case when c.relrowsecurity then 'PASS' else 'FAIL' end
+  from pg_class c
+  join pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'public' and c.relkind = 'r'
+
+  union all
+
+  -- A view without security_invoker executes as its owner (postgres, exempt from RLS),
+  -- which turns any tenant-scoped view into a cross-tenant leak that still looks
+  -- correct in every policy listing.
+  select 17,
+         'security_invoker (catalogue-driven): public.' || c.relname::text,
+         case when c.reloptions @> array['security_invoker=true'] then 'PASS' else 'FAIL' end
+  from pg_class c
+  join pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'public' and c.relkind = 'v'
+
+  union all
+
+  -- No unauthenticated read anywhere. anon needs exactly one capability in this
+  -- system — signing up — and that runs through GoTrue, not through PostgREST.
+  select 17,
+         'no anon SELECT (catalogue-driven): public.' || c.relname::text,
+         case when not has_table_privilege('anon', c.oid, 'SELECT') then 'PASS' else 'FAIL' end
+  from pg_class c
+  join pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'public' and c.relkind in ('r', 'v')
+
+  union all
+
+  -- ...and the catalogue-driven checks above are only meaningful if they actually
+  -- found the schema. Without this, dropping every table would report a clean pass.
+  select 17,
+         'the catalogue-driven checks saw the whole schema (24+ tables, 9+ views)',
+         case when (select count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace
+                     where n.nspname = 'public' and c.relkind = 'r') >= 24
+               and (select count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace
+                     where n.nspname = 'public' and c.relkind = 'v') >= 9
+              then 'PASS' else 'FAIL' end
 )
 
 select
