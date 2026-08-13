@@ -2,7 +2,11 @@
 
 **Project:** `udjvbvtxrgrvpnmfvnbk` (Supabase hosted, `ap-south-1`), Postgres 17.6
 **Date:** 2026-08-12
-**Scope:** hardening only. No features added. One migration written — `20260811090000` — which fixes a race the testing found.
+**Scope:** hardening only. No features added. Two migrations written — `20260811090000` and `20260811090100` — both fixing concurrency races the testing found.
+
+**Amended 2026-08-13:** a second concurrency defect was found after this report was first
+written — a lost-update race on `visits.last_vitals_at`. §1, §5 and §5b below are updated.
+The finding count went from one to two; the coverage numbers grew with it.
 
 ---
 
@@ -14,19 +18,24 @@
 | Hostile role states | **9** |
 | Generated attack attempts | **477** |
 | **Cross-tenant leaks found** | **0** |
-| Concurrency scenarios | 7 |
-| **Concurrency defects found** | **1 — duplicate invoices. Fixed.** |
+| Concurrency scenarios | 9 |
+| **Concurrency defects found** | **2 — duplicate invoices, and a stale vitals-freshness cache. Both fixed.** |
 | `rules.md` §1/§4 violations | 0 |
 
 Tenant isolation held under every attack attempted, including nine role states against
 every relation, and including a negative control proving the result depends on RLS rather
-than on empty fixtures. The single real defect Phase 5 found was not an isolation failure
-— it was a **concurrency** failure in invoice creation, invisible to four phases of
-sequential testing. It is described in §4 and fixed.
+than on empty fixtures. **Neither real defect Phase 5 found was an isolation failure.**
+Both were **concurrency** failures — one in invoice creation (§4), one in the rounds-list
+freshness cache (§5b) — and both were invisible to four phases of sequential testing.
+That is the phase's main result: the security model held; the concurrency model did not.
 
-Two findings are *not* clean and are not buried: the backup posture is unverified
-(`docs/backup-and-restore.md` §6), and an earlier version of the DELETE attack matrix in
-this very suite passed vacuously (§3.3).
+Three findings are *not* clean and are not buried:
+
+- the backup posture is unverified (`docs/backup-and-restore.md` §6) — a pilot blocker;
+- an earlier version of the DELETE attack matrix in this very suite passed vacuously (§3.3);
+- the vitals-freshness race (§5b) is fixed **by inspection, not by a reproduction** — it
+  did not reproduce here in 16 attempts. That bounds the severity claim and is stated as
+  such rather than smoothed over.
 
 ---
 
@@ -291,11 +300,11 @@ back would reintroduce the exact bug with nothing to notice it.
 
 ---
 
-## 5. Concurrency results — the other six scenarios
+## 5. Concurrency results — all nine scenarios
 
 All against the real hosted project with independent connections, because PGlite runs one
-in-process backend behind a single connection and cannot produce genuine contention. **35
-assertions, 0 failures.**
+in-process backend behind a single connection and cannot produce genuine contention. **42
+assertions, 0 failures**, across three consecutive runs.
 
 | # | Scenario | Result |
 |---|---|---|
@@ -303,17 +312,126 @@ assertions, 0 failures.**
 | 2 | Two simultaneous `create_invoice_for_visit()` | **failed before the fix**; now exactly one invoice, totals matching lines |
 | 3 | Two patients, one bed, simultaneous admits | exactly one admission; loser got `BED_NOT_AVAILABLE`; bed occupied by exactly one visit |
 | 4 | 8 simultaneous check-ins (busy OPD morning) | all 8 succeeded, no duplicate tokens, contiguous 3..10 — the lock serialised cleanly |
-| 5 | Two nurse sessions writing vitals to one visit, out of order | both rows landed; `visits.last_vitals_at` equalled `max(recorded_at)`, so the older concurrent write did not clobber the newer freshness |
+| 5 | Two nurse sessions writing vitals to one visit, out of order | both rows landed; `last_vitals_at` equalled `max(recorded_at)` |
+| **5b** | **8 vitals writers on one visit, newest issued first** | **added after §5b's defect was reported; passes, and is now the permanent guard for it** |
+| **5c** | **Vitals writes racing `discharge_patient()` on one visit** | **no `40P01` across 4 rounds — the deadlock probe for the lock-order change** |
 | 6 | Deactivation racing 6 in-flight writes | every write either committed or was cleanly refused; every row that landed was structurally complete; access gone afterwards |
 | 7 | Both clinics writing simultaneously | no cross-tenant visibility mid-concurrency |
-
-Scenario 5 is worth noting: the freshness trigger recomputes `max(recorded_at)` from the
-table rather than copying `NEW`, and this is the first test that proves the recompute holds
-when the writes arrive out of order rather than merely reading correct in sequence.
 
 Scenario 4's contiguous token run is evidence the queue-number lock serialised rather than
 collided. Gaplessness is not strictly required — a rolled-back allocation could legitimately
 skip — but a contiguous 3..10 under eight-way contention is a strong signal.
+
+---
+
+## 5b. The second defect: a stale vitals-freshness cache
+
+`refresh_visit_vitals_freshness()` (Phase 3, `20260811070300`) maintains
+`visits.last_vitals_at`, a derived cache of `max(vitals.recorded_at)`. It recomputed from
+the table rather than copying `NEW` — which is correct, and unchanged — but the recompute
+and the write were **two statements with no lock held between them**:
+
+```sql
+select max(v.recorded_at) into v_last from public.vitals v where v.visit_id = v_visit;
+-- nothing held here
+update public.visits set last_vitals_at = v_last where id = v_visit
+   and last_vitals_at is distinct from v_last;
+```
+
+Two nurses charting the same patient at once: each `select max()` runs on its own snapshot
+and sees only its own uncommitted insert, so one computes NEWER and one OLDER. Both then
+UPDATE the same row. The loser blocks on the row lock and, when released, **does not
+recompute** — it applies the value it captured earlier.
+
+**Why the `is distinct from` guard does not save it**, which is the non-obvious part: under
+READ COMMITTED a released UPDATE re-evaluates its WHERE clause against the newly committed
+row (EvalPlanQual). The guard asks "is the stored value *different* from mine", not "is
+mine *newer*". So the loser re-checks `NEWER is distinct from OLDER`, finds it true, and
+overwrites. The SET expression is a plpgsql variable, so re-evaluation does not refresh it.
+
+### Blast radius — narrow, and stated as such
+
+`last_vitals_at` holds no measurement (Phase 3 deliberately keeps values off `visits`
+because billing can read that table). It drives "who is overdue" sorting on the rounds list
+and makes a vitals entry emit a Realtime change on `visits`. The cache can only **lag** the
+true latest reading, never advance past a reading that was never taken. So the harm is a
+patient appearing *less* overdue than they are — a degraded triage signal, not corrupted
+clinical data. `rounds_overview` reads `vitals` directly and is unaffected.
+
+### It did not reproduce
+
+Reported from one run of the concurrency suite, but **16 attempts here did not reproduce
+it**: 2 concurrent writers ×3 runs, 8 concurrent writers with descending timestamps ×3
+runs, and 10 attempts with 6 writers released together from behind a deliberate `visits`
+row-lock barrier. On this project the per-request transactions appear to finish faster than
+the gap between requests, so they serialise naturally and the window never opens.
+
+Fixed anyway, on the grounds that a read-then-write with no lock is a lost update whenever
+the window *does* open, and "it does not open today" is a property of network latency
+rather than of the schema.
+
+### The fix — and the two things the obvious fix got wrong
+
+`20260811090100` takes the lock before the recompute. Two details made the naive version
+worse than the bug:
+
+**1. Lock strength.** `select ... for update` would have been an escalation. Every child
+table parents onto `visits` via a composite FK, so inserting a task, lab order, clinical
+note, medication administration, billing line **or a second vitals row** takes
+`FOR KEY SHARE` on the parent visit. `FOR KEY SHARE` conflicts with `FOR UPDATE` but not
+with `FOR NO KEY UPDATE` — and the existing plain `UPDATE` only ever took
+`FOR NO KEY UPDATE`, because `last_vitals_at` appears in no key or unique index. So
+`for update` would have made one vitals insert block every concurrent child insert for that
+visit, working directly against the `skip locked` in the sibling trigger that exists so
+"two nurses recording at once must not fight over it". The fix uses
+**`for no key update`**, which self-conflicts (giving the needed mutual exclusion) while
+leaving FK inserts free.
+
+**2. A deadlock the fix would have created.** A vitals insert fires two AFTER triggers, in
+trigger-*name* order: `vitals_autocomplete_task` before `vitals_refresh_visit_freshness`.
+The first locks a `tasks` row. So a vitals insert would acquire **tasks → visits**, while
+`discharge_patient()` takes `visits FOR UPDATE` and then cancels the visit's pending tasks
+— **visits → tasks**. Opposite orders on the same two rows is a textbook `40P01`.
+`SKIP LOCKED` does not help: it only skips rows already locked when the SELECT runs; once
+the trigger is the holder, a later transaction blocks on it normally.
+
+Closed by taking the visit lock at the top of **both** vitals triggers. Doing it in both is
+what makes it order-*independent* — whichever fires first acquires `visits`, and the second
+finds the lock already held by its own transaction — so a future trigger rename cannot
+silently reintroduce the cycle. This extends a convention the schema already states:
+`20260811070500` documents that locks are taken visit-then-bed everywhere so concurrent
+admissions cannot deadlock. Every path that touches both tables now agrees:
+
+| Path | Lock order |
+|---|---|
+| vitals insert (both triggers) | `visits` → `tasks` |
+| `discharge_patient()` | `visits` → `tasks` |
+| `admit_patient_to_bed()` | `visits` → `beds` → `tasks` |
+| `set_visit_status()` | `visits` → `billing_line_items` |
+| `complete_task()` / `cancel_task()` | `tasks` only — never wants `visits`, so cannot close a cycle |
+
+### Guards added
+
+- **`concurrency.remote.test.ts` §5b** — 8 writers, descending timestamps, newest issued
+  first, so the writer holding the true max commits early and any of the other seven
+  landing last would expose a stale value. Raises the detection probability from ~1/2
+  (two writers) to ~7/8.
+- **`concurrency.remote.test.ts` §5c** — the deadlock probe. Admits a visit (which creates
+  the contended `vitals_due` task), then races `discharge_patient()` against four vitals
+  inserts, 4 rounds, asserting no `40P01`. Includes a non-vacuity assertion that every
+  round actually admitted.
+- **`verify:catalog` group 18** — three checks on the deployed function bodies: the lock
+  precedes the recompute, the lock is *not* escalated to a bare `FOR UPDATE`, and the
+  sibling trigger takes the visit lock before the tasks lock. A `CREATE OR REPLACE` is the
+  realistic way any of this gets undone, and none of it would raise an error when it did.
+
+### One pre-existing hazard found and deliberately not fixed
+
+Within `admit_patient_to_bed()` the two bed locks during a transfer are taken
+target-then-source rather than in a canonical order, so two simultaneous mirror-image
+transfers (patient A bed1→bed2 while patient B bed2→bed1) could deadlock on `beds` alone.
+Pre-existing, unrelated to this fix, and outside a scope of "fix the reported race" — logged
+in `Memory.md` §6 rather than changed here.
 
 ---
 
@@ -362,19 +480,25 @@ silencing the tooling.
 | 5 | Edge Functions (2 PDF renderers + the critical-value dispatcher) are written, typed and committed but **never deployed or executed** — `functions deploy` needs the same missing access token. The in-app critical-value alert does not depend on them. | medium |
 | 6 | Playwright E2E is **blocked**: it needs `apps/web`, which is Prince's track. `docs/playwright-e2e-spec.md` is the specification; no stub app was built. | medium |
 | 7 | `db:seed:reset` bypasses RLS with the service-role key and can delete tenants. Correct as written and scoped to seed fixtures, but it should refuse to run against a project containing non-seed tenants before a pilot. Not changed — a behaviour change, not hardening. | medium |
+| 8 | **`admit_patient_to_bed()` locks the two beds in a transfer target-then-source, not in a canonical order**, so two simultaneous mirror-image transfers could deadlock on `beds`. Found during the §5b lock-order audit; pre-existing and out of that fix's scope. The remedy is the same as §5b's: order the two bed locks deterministically (e.g. by `id`). | medium |
+| 9 | **The vitals-freshness race was fixed without a reproduction.** 16 attempts did not trigger it (§5b). The fix is sound by inspection and §5b/§5c guard it, but nobody has watched the original symptom disappear, because nobody could make it appear here. | low — the fix is strictly safer than the code it replaced |
 
 ---
 
 ## 8. Verification commands
 
 ```bash
-npm run test:local      # 8 suites, includes test:pentest — 131 pentest assertions
+npm run test:local      # 8 suites, 1156 assertions, includes test:pentest
 npm run test:pentest    # 131 passed, 0 failed; 477 attack attempts, 0 leaks
-npm run verify:catalog  # 165 checks, 0 failures
+npm run verify:catalog  # 168 checks, 0 failures
 npm run audit:codes     # 67/67 error codes documented
 npm run db:seed && npm run test:remote   # rls + opd + phase3 + concurrency, hosted
-npm run test:concurrency # 35 passed, 0 failed
+npm run test:concurrency # 42 passed, 0 failed — run it 3x, it is the race suite
 ```
+
+A concurrency suite deserves more than one clean run before it is believed: a
+timing-dependent bug can pass by luck. `test:concurrency` was run three consecutive times
+after the `20260811090100` fix, 42/42 each time.
 
 `test:pentest` was added to the `test:local` chain in this phase — it existed but was not
 wired in, which is the same class of gap as an untested table. `test:remote` was likewise

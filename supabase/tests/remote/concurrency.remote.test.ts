@@ -298,6 +298,151 @@ section('5. Concurrent vitals — two nurse sessions, same visit, same instant')
 }
 
 /* ========================================================================== */
+section('5b. Vitals freshness under HEAVY contention — 8 writers, newest issued first');
+
+{
+  // ---------------------------------------------------------------------------
+  // WHY THIS EXISTS ALONGSIDE §5, WHICH ALREADY TESTS TWO CONCURRENT WRITERS.
+  //
+  // §5 uses two writers, and with two writers a lost-update race on
+  // visits.last_vitals_at only manifests when the OLDER writer happens to commit its
+  // UPDATE last — roughly a coin flip. A suite that catches a real bug half the time
+  // reports "passed" half the time, which is indistinguishable from correct.
+  //
+  // Eight writers with DESCENDING timestamps closes that gap. Index 0 carries the
+  // newest stamp and is issued first, so the writer holding the true max is likely to
+  // commit early; each of the other seven computed its max before that commit was
+  // visible, so whichever of them lands last would write a staler value. The failure
+  // probability goes from ~1/2 to ~7/8.
+  //
+  // The assertion is deliberately not "the value moved". It is "the value equals the
+  // true max", because the bug this catches does not corrupt the timestamp — it makes
+  // the freshness cache LAG, which on a rounds list means a patient shows as more
+  // recently checked than they were, or less overdue than they are.
+  // ---------------------------------------------------------------------------
+  const p = await newPatient(B.billing, 'Fresh');
+  const visitId = (await callRpc(B.billing, 'check_in_patient',
+    { p_patient_id: p, p_doctor_id: meDoctorB.id })).visit_id as string;
+
+  const N = 8;
+  const stamps = Array.from({ length: N }, (_, i) =>
+    new Date(Date.now() - i * 60 * 60 * 1000).toISOString());
+  const newest = stamps[0] as string;
+
+  // Alternating sessions, so these are genuinely separate backends rather than
+  // pipelined requests on one connection.
+  const results = await Promise.all(stamps.map((ts, i) =>
+    (i % 2 === 0 ? B.nurse1 : B.nurse2).from('vitals').insert({
+      tenant_id: tenantBId, visit_id: visitId, recorded_by: meNurseB.id,
+      recorded_at: ts, pulse_bpm: 60 + i,
+    }).select('id').maybeSingle()));
+
+  const errored = results.filter((r) => r.error);
+  checkEqual(`** all ${N} concurrent vitals inserts landed **`, errored.length, 0);
+  if (errored.length > 0) {
+    check('...insert errors', false, JSON.stringify(errored.map((e) => e.error?.message).slice(0, 3)));
+  }
+
+  const { data: rows } = await B.nurse1
+    .from('vitals').select('recorded_at').eq('visit_id', visitId);
+  checkEqual(`** ${N} vitals rows exist for the visit **`, rows?.length, N);
+
+  // The truth, computed from the rows that actually committed.
+  const observedMax = (rows ?? [])
+    .map((r) => new Date(String(r.recorded_at)).getTime())
+    .sort((a, b) => b - a)[0] as number;
+
+  const { data: visit } = await B.nurse1
+    .from('visits').select('last_vitals_at').eq('id', visitId).maybeSingle();
+  const cached = new Date(String(visit?.last_vitals_at)).getTime();
+  const lagHours = (observedMax - cached) / 3_600_000;
+
+  checkEqual('** visits.last_vitals_at equals max(recorded_at) under 8-way contention **',
+    cached, observedMax);
+  check('** ...and is the newest stamp, not a staler max a losing writer precomputed **',
+    cached === new Date(newest).getTime(),
+    `cached=${visit?.last_vitals_at} expected=${newest} lag=${lagHours}h`);
+  // Stated as its own assertion because a lagging freshness cache is precisely a
+  // "this patient looks less overdue than they are" bug on the rounds list.
+  check('** ...so the rounds list cannot under-report how overdue this patient is **',
+    lagHours === 0, `freshness lags the true latest reading by ${lagHours}h`);
+}
+
+/* ========================================================================== */
+section('5c. DEADLOCK PROBE — vitals writes racing discharge_patient on one visit');
+
+{
+  // ---------------------------------------------------------------------------
+  // This exists because of what migration 20260811090100 changed, not because of a
+  // reported bug. That migration made both vitals triggers take a FOR NO KEY UPDATE
+  // lock on the visit row, and a lock-ordering change is precisely the kind of fix
+  // that trades one defect for a worse one if the order is wrong.
+  //
+  // The hazard it closes: a vitals INSERT fires two AFTER triggers, and Postgres fires
+  // them in name order, so vitals_autocomplete_task (which locks a `tasks` row with
+  // FOR UPDATE SKIP LOCKED) runs before vitals_refresh_visit_freshness (which wants the
+  // `visits` row). That gave a vitals insert the order tasks -> visits, while
+  // discharge_patient() takes visits FOR UPDATE and then cancels the visit's pending
+  // tasks — visits -> tasks. Opposite orders on the same two rows is a deadlock.
+  //
+  // The visit must be ADMITTED, because that is what creates the pending vitals_due
+  // task via autoinsert_admission_vitals_task(). Without it there is no contended task
+  // row and the probe would pass vacuously.
+  //
+  // The assertion is on the ERROR CLASS, not on who wins. Either side may legitimately
+  // lose a row-lock wait or find the visit already discharged; what nobody may see is
+  // 40P01.
+  // ---------------------------------------------------------------------------
+  const ROUNDS = 4;
+  const WRITES = 4;
+  const deadlocks: string[] = [];
+  let admitted = 0;
+
+  for (let r = 0; r < ROUNDS; r++) {
+    const p = await newPatient(B.billing, `Dead${r}`);
+    const visitId = (await callRpc(B.billing, 'check_in_patient',
+      { p_patient_id: p, p_doctor_id: meDoctorB.id })).visit_id as string;
+
+    const bed = await B.admin.from('beds')
+      .insert({ tenant_id: tenantBId, ward_name: 'Deadlock Ward', bed_number: `D-${RUN}-${r}` })
+      .select('id').maybeSingle();
+    if (bed.error || !bed.data) {
+      check(`round ${r}: bed created`, false, bed.error?.message);
+      continue;
+    }
+
+    const adm = await callRpc(B.nurse1, 'admit_patient_to_bed',
+      { p_visit_id: visitId, p_bed_id: bed.data.id as string });
+    if (adm.ok !== true) {
+      check(`round ${r}: admission succeeded (needed for the pending task)`, false, JSON.stringify(adm));
+      continue;
+    }
+    admitted += 1;
+
+    // Discharge and several vitals writes, all in flight together. Both sides now want
+    // the same visits row and the same pending vitals_due task row.
+    const outcomes = await Promise.all([
+      callRpc(B.doctor, 'discharge_patient', { p_visit_id: visitId }),
+      ...Array.from({ length: WRITES }, (_, i) =>
+        (i % 2 === 0 ? B.nurse1 : B.nurse2).from('vitals').insert({
+          tenant_id: tenantBId, visit_id: visitId, recorded_by: meNurseB.id,
+          recorded_at: new Date(Date.now() - i * 60_000).toISOString(),
+          pulse_bpm: 80 + i,
+        }).select('id').maybeSingle()),
+    ]);
+
+    for (const o of outcomes) {
+      const blob = JSON.stringify(o);
+      if (/40P01|deadlock/i.test(blob)) deadlocks.push(`round ${r}: ${blob.slice(0, 200)}`);
+    }
+  }
+
+  checkEqual(`** every round actually admitted, so the probe is not vacuous **`, admitted, ROUNDS);
+  checkEqual(`** NO deadlock (40P01) across ${ROUNDS} rounds of vitals-vs-discharge contention **`,
+    deadlocks, []);
+}
+
+/* ========================================================================== */
 section('6. Deactivation racing an in-flight session');
 
 {

@@ -265,7 +265,7 @@ is correct", which are different claims.
 
 ```bash
 npm run db:migrations   # local and remote must be in lockstep; a restore can rewind schema_migrations
-npm run verify:catalog  # 165 checks: RLS on every table, security_invoker on every view, no anon SELECT
+npm run verify:catalog  # 168 checks: RLS on every table, security_invoker on every view, no anon SELECT
 npm run audit:codes     # 67/67 error codes still documented
 npm run test:local      # 8 suites; full RLS + flow + pentest coverage against PGlite
 ```
@@ -287,6 +287,17 @@ npm run test:remote      # rls + opd + phase3 + concurrency, against the real pr
 And the invariants a restore could rewind past:
 
 ```sql
+-- 0. Both Phase 5 concurrency fixes must still be in the deployed function bodies.
+--    A restore rewinds functions too, and losing either of these raises no error.
+--    verify:catalog groups 16 and 18 cover this; run them rather than eyeballing it.
+select proname,
+       position('pg_advisory_xact_lock' in prosrc) < position('INVOICE_ALREADY_EXISTS' in prosrc)
+         as lock_before_check
+  from pg_proc where proname = 'create_invoice_for_visit';                        -- expect true
+select proname, position('for no key update' in prosrc) > 0 as locks_visit
+  from pg_proc
+ where proname in ('refresh_visit_vitals_freshness', 'autocomplete_vitals_due_task');  -- expect true, true
+
 -- 1. The Phase 5 duplicate-invoice index must still exist.
 select count(*) from pg_indexes
  where schemaname = 'public' and indexname = 'invoices_one_live_per_visit_idx';   -- expect 1

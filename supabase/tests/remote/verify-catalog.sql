@@ -419,6 +419,58 @@ with checks as (
                and (select count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace
                      where n.nspname = 'public' and c.relkind = 'v') >= 9
               then 'PASS' else 'FAIL' end
+
+  union all
+
+  -- ---- 18. PHASE 5: the vitals-freshness race fix (20260811090100) --------
+  -- Three separate properties, because they fail independently and each one silently.
+  -- All read the DEPLOYED function bodies: a CREATE OR REPLACE is the realistic way
+  -- any of this gets undone, and none of it would produce an error when it did.
+  select 18,
+         'refresh_visit_vitals_freshness locks the visit BEFORE recomputing max()',
+         case when (
+           select position('for no key update' in p.prosrc) > 0
+              and position('max(v.recorded_at)' in p.prosrc) > 0
+              and position('for no key update' in p.prosrc)
+                < position('max(v.recorded_at)' in p.prosrc)
+           from pg_proc p
+           join pg_namespace n on n.oid = p.pronamespace
+           where n.nspname = 'public' and p.proname = 'refresh_visit_vitals_freshness'
+         ) then 'PASS' else 'FAIL' end
+
+  union all
+
+  -- Lock STRENGTH, not just presence. `for update` here would conflict with the
+  -- FOR KEY SHARE that every FK child insert (vitals, tasks, lab_orders, clinical_notes,
+  -- medication_administrations, billing_line_items) takes on the parent visit, so a
+  -- single vitals insert would block all of them. `last_vitals_at` is in no key or
+  -- unique index, so FOR NO KEY UPDATE is both sufficient and the correct strength.
+  select 18,
+         'refresh_visit_vitals_freshness does NOT escalate to a bare FOR UPDATE',
+         case when (
+           select position('for update' in p.prosrc) = 0
+           from pg_proc p
+           join pg_namespace n on n.oid = p.pronamespace
+           where n.nspname = 'public' and p.proname = 'refresh_visit_vitals_freshness'
+         ) then 'PASS' else 'FAIL' end
+
+  union all
+
+  -- LOCK ORDER. autocomplete_vitals_due_task() fires first (AFTER triggers run in name
+  -- order and 'vitals_autocomplete_task' < 'vitals_refresh_visit_freshness') and locks a
+  -- tasks row. It must take the visit lock before that, or a vitals insert acquires
+  -- tasks-then-visits while discharge_patient() acquires visits-then-tasks — a deadlock.
+  select 18,
+         'autocomplete_vitals_due_task locks the visit BEFORE the tasks row (order fix)',
+         case when (
+           select position('for no key update' in p.prosrc) > 0
+              and position('for update skip locked' in p.prosrc) > 0
+              and position('for no key update' in p.prosrc)
+                < position('for update skip locked' in p.prosrc)
+           from pg_proc p
+           join pg_namespace n on n.oid = p.pronamespace
+           where n.nspname = 'public' and p.proname = 'autocomplete_vitals_due_task'
+         ) then 'PASS' else 'FAIL' end
 )
 
 select
