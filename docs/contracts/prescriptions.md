@@ -394,3 +394,88 @@ export type IssuePrescriptionResult =
 | Remote | `npm run test:opd:remote` | **102/102** |
 
 Covered here specifically: a bare item (drug name only) saves; draft bills nothing; issue creates one line per item; re-issue refused; empty prescription refused; allergy → `high`; aspirin+warfarin → `high` in **both** drug orders; Combiflam matches the ibuprofen pair; amlodipine+atorvastatin → `low`; clean check on a patient *with* allergies → `complete` and `requires_acknowledgement: false`; unknown drug → `partial` + `UNKNOWN_DRUGS` + acknowledgement demanded despite zero findings; empty allergy history → `partial` + `NO_ALLERGIES_RECORDED`; unknown patient → `ok: false` (distinct from a clean check); cross-tenant patient/prescription both refused.
+
+---
+
+## 12. PHASE 6 ADDITION — `cancel_prescription()`
+
+§1 described the lifecycle as `draft → issued` and noted `cancelled` existed in the
+enum. It was unreachable: `status` is in no client grant and no RPC wrote it. So a
+doctor who issued a prescription in error had no way to retract it — the read side had
+been ready since Phase 3 (`record_medication_administration()` returns
+`PRESCRIPTION_CANCELLED`), but nothing could produce that state.
+
+```ts
+const { data } = await supabase.rpc('cancel_prescription', {
+  p_prescription_id: rxId,
+  p_reason: 'Allergy noticed after issue',   // optional
+});
+```
+
+Success:
+
+```jsonc
+{
+  "ok": true,
+  "prescription_id": "…",
+  "status": "cancelled",
+  "changed": true,
+  "was_issued": true,
+  "charges_withdrawn": 1,   // pending medicine lines removed
+  "charges_invoiced": 0,    // ⚠️ see below
+  "reason": "Allergy noticed after issue"
+}
+```
+
+Cancelling an already-cancelled prescription is an **idempotent no-op success**
+(`changed: false`), so a double-tapped button is harmless.
+
+### 12.1 Who may cancel — wider than who may issue
+
+`issue_prescription()` is prescriber-only. Cancelling is **the prescriber OR any
+admin**, and the asymmetry is deliberate: an un-retracted wrong prescription is a drug
+that may be administered, and if the only person who can retract it has gone home,
+"wait for the prescriber" is not an acceptable answer on a ward at 2am. Stopping is
+safer to over-permit than starting.
+
+A nurse cannot cancel (`NOT_CLINICAL_STAFF`) — it is a prescribing decision — but they
+are already protected, because `record_medication_administration()` refuses a
+cancelled item.
+
+### 12.2 ⚠️ What happens to medicine charges already captured
+
+Issuing fires the medicine billing trigger, so by the time a prescription can be
+cancelled the charges usually exist. The rule follows the one Phase 3 already set for
+a cancelled lab order:
+
+- **Still pending (`invoice_id is null`) → deleted.** Reported as
+  `charges_withdrawn`. The patient is not billed for medicine explicitly never
+  dispensed.
+- **Already on an invoice → left exactly as it is.** Reported as
+  `charges_invoiced`. An issued tax document is not silently rewritten.
+
+**`charges_invoiced > 0` is a signal you must surface.** It means a charge for
+undispensed medicine is sitting on an issued invoice and needs a credit note — which
+this system does not model. Suggested copy: *"This prescription was cancelled, but ₹X
+of medicine is already on invoice #N. Raise a credit note or adjust the payment."*
+
+### 12.3 Side effects on the prescription row
+
+- `status` → `cancelled`
+- `issued_at` → **NULL** (the `prescriptions_issued_has_timestamp` constraint pairs
+  them, and would reject a cancelled row still claiming an issue time)
+- `notes` → the reason is appended as `Cancelled: <reason>`, preserving anything
+  already there. There is no separate `cancellation_reason` column: `notes` is already
+  the prescriber's free-text field on this table.
+
+### 12.4 Error codes
+
+| Code | Meaning |
+|---|---|
+| `NOT_AUTHENTICATED` | No session |
+| `NOT_CLINICAL_STAFF` | Caller is not a doctor or an admin |
+| `PRESCRIPTION_NOT_FOUND` | Unknown id, or another clinic's — same answer either way |
+| `NOT_PRESCRIBER` | A doctor trying to cancel a colleague's prescription (an admin may) |
+
+All four already existed elsewhere in this contract set, so `npm run audit:codes` is
+unchanged at 67/67.

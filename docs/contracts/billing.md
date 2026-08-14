@@ -378,3 +378,131 @@ export interface TenantBillingSettings {
 | Remote | `npm run test:opd:remote` | **102/102** |
 
 Covered here specifically: consultation line auto-appears at the **doctor's** fee rather than the tenant default; status bounce does not double-charge; draft prescription bills nothing while issuing bills every item; MRP-based auto-pricing; an exempt life-saving drug lands as `nil_rated` rather than being taxed at 5%; an unpriced item yields a visible ₹0 line; invoice `subtotal`/`tax_total`/`grand_total` correct with tax from the medicine line only; **three distinct tax buckets** on a mixed bill and `tax_total` equal to their sum; GSTIN snapshotted; second invoice per visit refused; no charges left pending after invoicing; a **non-GST tenant produces zero tax lines** and no GSTIN; a doctor cannot invoice or hand-write a charge; `subtotal` and `invoice_id` unwritable; `paid → draft` rejected; every table cross-tenant isolated with the negative control confirming RLS is what does it.
+
+---
+
+## 13. PHASE 6 ADDITION — room rent (`source_type = 'room_rent'`)
+
+### 13.1 The fourth auto-captured charge
+
+§1 listed three charges nobody types. There are four now:
+
+| Charge | Fires when | `source_id` points at |
+|---|---|---|
+| `consultation` | visit enters `in_consultation` or `done` | the visit |
+| `medicine` | prescription is issued | each `prescription_item` |
+| `lab` | lab order is inserted | the lab order |
+| **`room_rent`** | **a `bed_stays` row closes** | **the `bed_stays` row** |
+
+`source_type` now admits `room_rent`. `'other'` would have needed no DDL and was
+rejected: every report that groups by `source_type` would have folded room rent in
+with miscellaneous manual charges, and room rent is the one line on an inpatient bill
+a patient, an auditor and an insurer all look for by name.
+
+### 13.2 ⚠️ The GST rule on a hospital room — a third category
+
+§2 described two axes: the tenant's registration, and the nature of the supply. Room
+rent is a **third supply nature**, and it follows neither the consultation rule nor
+the medicine rule. Since 18 July 2022:
+
+| Room | Treatment |
+|---|---|
+| ICU / CCU / ICCU / NICU | **`exempt`, at any rate whatsoever** |
+| Any other room, rate **≤ ₹5,000/day** | `exempt` |
+| Any other room, rate **> ₹5,000/day** | `taxable` @ **5%**, no input tax credit |
+
+Three things to get right, because each is a way to be wrong:
+
+1. **The threshold is on the DAILY RATE, not the bill total.** A 10-day stay at
+   ₹4,000/day is ₹40,000 and still exempt.
+2. **Critical care is an override, not a tie-break.** An ICU at ₹25,000/day is exempt.
+   The implementation checks the flag *before* the threshold, and `verify:catalog`
+   group 19 asserts that ordering.
+3. **Axis 1 still dominates.** A clinic that is not GST-registered bills a ₹9,000/day
+   room as `non_gst`, not `taxable`.
+
+"No input tax credit" constrains the hospital's own return, not the invoice line, so
+nothing is stored for it — but it is why the rate is a flat 5% and not a lookup.
+
+### 13.3 `resolve_tax_treatment()` — a new 5-argument form
+
+The old 3-argument boolean form **still exists and still behaves identically**; it is
+now a thin wrapper that delegates, so the Phase 2/3 call sites are untouched. New
+callers should use the 5-arg form with named arguments:
+
+```sql
+select tax_category, tax_rate
+from public.resolve_tax_treatment(
+  p_tenant_id       => :tenant,
+  p_supply_kind     => 'room_rent',   -- 'service' | 'medicine' | 'room_rent'
+  p_drug_gst_rate   => null,
+  p_room_daily_rate => 8000,
+  p_room_critical   => false
+);
+-- -> ('taxable', 5.00)
+```
+
+An unrecognised `p_supply_kind` returns `exempt` rather than raising — a future supply
+kind that reaches it un-taught produces a visibly wrong-but-zero tax line that
+reconciliation can surface, instead of a failed insert that blocks a clinical action.
+
+### 13.4 How many days get charged
+
+`bed_stay_days(started_at, ended_at, timezone)` — **calendar days crossed, in the
+clinic's own timezone, minimum 1.**
+
+- Calendar, not elapsed hours: a room is let by the night, so 22:00 → 06:00 is 1.
+- **Clinic-local.** The server runs in UTC; `tenants.billing_timezone` (default
+  `Asia/Kolkata`) is what stops the day boundary landing at 05:30 IST. A 2-night IST
+  stay counts 3 under UTC — a whole extra day billed.
+- Minimum 1: a same-day admit and discharge is charged one day, which is ordinary
+  practice and also structurally required (`billing_quantity_positive`).
+
+### 13.5 What the line looks like
+
+```jsonc
+{
+  "source_type": "room_rent",
+  "source_id": "<bed_stays.id>",
+  "description": "Room rent — General Ward (3 days)",
+  "quantity": 3,              // days
+  "unit_amount": 1800,        // the SNAPSHOTTED daily rate
+  "amount": 5400,
+  "tax_category": "exempt",
+  "tax_rate": 0,
+  "tax_amount": 0,
+  "is_auto": true
+}
+```
+
+The description carries the ward and the day count and **nothing clinical** — it is
+read at a billing counter and printed on an invoice a patient may hand to an employer.
+
+### 13.6 One line per stay, and what that means for you
+
+`billing_one_line_per_source_idx (tenant_id, source_type, source_id)` is unchanged and
+does the work: since `source_id` is the `bed_stays.id`, a stay bills exactly once,
+forever.
+
+Consequences worth knowing:
+
+- **A transfer produces two lines**, one per ward stint, each at its own rate. That is
+  the mechanism behind "each night at the rate that applied that night", not a
+  special case.
+- **An ongoing stay has no line yet.** Use `ipd_accrual_current` (see
+  `ipd-beds.md` §12.6) to show a running total. Reading it charges nothing.
+- **An unpriced ward bills a visible ₹0 line**, not nothing — the same rule as a drug
+  with no MRP and a lab test with no price list.
+
+### 13.7 Interim invoicing of a long stay — a known limitation
+
+`create_invoice_for_visit()` raises one invoice per visit and
+`invoices_one_live_per_visit_idx` permits one live invoice per visit, so an ongoing
+admission cannot be part-invoiced. Combined with §13.6, a two-week stay produces its
+room-rent lines at discharge. `ipd_accrual_current` covers the visibility need;
+interim/progress billing is not modelled.
+
+### 13.8 Error codes — unchanged
+
+Phase 6 introduced **no new billing error codes**. Room rent is captured by a trigger,
+which has no envelope to return.

@@ -471,6 +471,166 @@ with checks as (
            join pg_namespace n on n.oid = p.pronamespace
            where n.nspname = 'public' and p.proname = 'autocomplete_vitals_due_task'
          ) then 'PASS' else 'FAIL' end
+
+  union all
+
+  -- ---- 19. PHASE 6: IPD room-rent billing ---------------------------------
+  -- Group 17 already covers RLS on wards/bed_stays and security_invoker on
+  -- ipd_accrual_current, because it is catalogue-driven — that is the point of it,
+  -- and these two tables were covered the moment they existed without this file
+  -- being touched. What follows is the Phase 6 specific machinery, each item chosen
+  -- because losing it would produce a WRONG BILL rather than an error.
+
+  -- bed_stays is the billing basis for room rent. A client that could write it could
+  -- lengthen a stay to inflate a bill or shorten one to suppress a charge, so it has
+  -- no write path at all — stricter than `beds`, and deliberately so.
+  select 19,
+         'no client ' || priv || ': bed_stays',
+         case when not has_table_privilege('authenticated', 'public.bed_stays', priv)
+              then 'PASS' else 'FAIL' end
+  from unnest(array['INSERT', 'UPDATE', 'DELETE']) as priv
+
+  union all
+
+  -- The source_type CHECK had to be replaced rather than extended (Phase 2 reserved
+  -- 'lab' and 'procedure' but not a room-rent value). If a future migration rebuilt
+  -- it from the Phase 2 text, every room-rent insert would start failing.
+  select 19,
+         'billing_line_items.source_type admits room_rent',
+         case when exists (
+           select 1 from pg_constraint
+           where conname = 'billing_source_type_valid'
+             and conrelid = 'public.billing_line_items'::regclass
+             and pg_get_constraintdef(oid) like '%room_rent%'
+         ) then 'PASS' else 'FAIL' end
+
+  union all
+
+  -- ward_name is a foreign key now, not free text. Without it a bed could reference
+  -- a ward with no row, and that bed would have no rate to bill at.
+  select 19,
+         'beds.ward_name is a foreign key into wards',
+         case when exists (
+           select 1 from pg_constraint
+           where conname = 'beds_ward_exists'
+             and conrelid = 'public.beds'::regclass
+             and contype = 'f'
+         ) then 'PASS' else 'FAIL' end
+
+  union all
+
+  -- ...and the trigger that stops that FK turning "add a bed" into a 23503.
+  select 19,
+         'beds_ensure_ward trigger present (a new ward cannot block adding a bed)',
+         case when exists (
+           select 1 from pg_trigger
+           where tgrelid = 'public.beds'::regclass
+             and tgname = 'beds_ensure_ward'
+             and not tgisinternal
+         ) then 'PASS' else 'FAIL' end
+
+  union all
+
+  -- One live stay per bed and per visit, structurally rather than by the RPC being
+  -- careful. Same class of guarantee as beds_one_bed_per_visit_idx.
+  select 19,
+         'unique index present: ' || i,
+         case when exists (
+           select 1 from pg_indexes
+           where schemaname = 'public' and indexname = i
+         ) then 'PASS' else 'FAIL' end
+  from unnest(array['bed_stays_one_open_per_visit_idx', 'bed_stays_one_open_per_bed_idx']) as i
+
+  union all
+
+  -- The tax rule itself, in the deployed function body. The threshold and the
+  -- critical-care override are statutory; a silent edit to either misstates tax on
+  -- every inpatient bill, and nothing would raise an error.
+  -- Both overloads are identified by INPUT-argument COUNT (pg_proc.pronargs) rather
+  -- than by matching pg_get_function_identity_arguments against a literal string.
+  -- The string form was tried first and silently matched nothing, which made three
+  -- checks report FAIL against a schema that was in fact correct — a check that
+  -- cannot pass is as useless as one that cannot fail. pronargs is 5 and 3 here and
+  -- does not depend on how a signature happens to be rendered.
+  select 19,
+         'resolve_tax_treatment carries the room_rent branch with the 5000 threshold',
+         case when (
+           select position('room_rent' in p.prosrc) > 0
+              and position('5000' in p.prosrc) > 0
+              and position('p_room_critical' in p.prosrc) > 0
+           from pg_proc p
+           join pg_namespace n on n.oid = p.pronamespace
+           where n.nspname = 'public' and p.proname = 'resolve_tax_treatment'
+             and p.pronargs = 5
+         ) then 'PASS' else 'FAIL' end
+
+  union all
+
+  -- Critical care must be checked BEFORE the threshold, or an ICU above ₹5,000
+  -- would be taxed when it is exempt at any rate. Ordering, asserted the same way
+  -- group 16 asserts the invoice lock ordering.
+  select 19,
+         'resolve_tax_treatment checks critical care BEFORE the 5000 threshold',
+         case when (
+           select position('p_room_critical' in p.prosrc) > 0
+              and position('5000' in p.prosrc) > 0
+              and position('p_room_critical' in p.prosrc) < position('5000' in p.prosrc)
+           from pg_proc p
+           join pg_namespace n on n.oid = p.pronamespace
+           where n.nspname = 'public' and p.proname = 'resolve_tax_treatment'
+             and p.pronargs = 5
+         ) then 'PASS' else 'FAIL' end
+
+  union all
+
+  -- The Phase 2 3-arg form must still exist, or three applied trigger functions that
+  -- call it stop working.
+  select 19,
+         'the Phase 2 3-arg resolve_tax_treatment still exists for the old call sites',
+         case when exists (
+           select 1 from pg_proc p
+           join pg_namespace n on n.oid = p.pronamespace
+           where n.nspname = 'public' and p.proname = 'resolve_tax_treatment'
+             and p.pronargs = 3
+         ) then 'PASS' else 'FAIL' end
+
+  union all
+
+  -- The room-rent charge fires off a stay closing. No trigger, no charge, silently.
+  select 19,
+         'bed_stays_autoinsert_room_rent trigger present',
+         case when exists (
+           select 1 from pg_trigger
+           where tgrelid = 'public.bed_stays'::regclass
+             and tgname = 'bed_stays_autoinsert_room_rent'
+             and not tgisinternal
+         ) then 'PASS' else 'FAIL' end
+
+  union all
+
+  -- Every tenant must have a resolvable billing timezone, or a bed-day boundary
+  -- silently falls back to UTC and long stays over-bill by a day.
+  select 19,
+         'every tenant has a valid billing_timezone',
+         case when not exists (
+           select 1 from public.tenants
+           where billing_timezone is null
+              or not public.is_valid_timezone(billing_timezone)
+         ) then 'PASS' else 'FAIL' end
+
+  union all
+
+  -- Data check: no closed bed stay may be missing its room-rent line. This is the
+  -- one that would catch the charge silently not firing on a real project.
+  select 19,
+         'every closed bed stay has exactly one room_rent line',
+         case when not exists (
+           select 1
+           from public.bed_stays bs
+           where bs.ended_at is not null
+             and (select count(*) from public.billing_line_items b
+                   where b.source_type = 'room_rent' and b.source_id = bs.id) <> 1
+         ) then 'PASS' else 'FAIL' end
 )
 
 select
