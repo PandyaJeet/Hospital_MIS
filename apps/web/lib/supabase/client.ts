@@ -1,5 +1,6 @@
 import { createBrowserClient } from "@supabase/ssr";
 
+import { supabaseAnonKey, supabaseUrl } from "./env";
 import type { Database } from "./types";
 
 /**
@@ -10,8 +11,5 @@ import type { Database } from "./types";
  * (see rules.md §1, §4).
  */
 export function createClient() {
-  return createBrowserClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  );
+  return createBrowserClient<Database>(supabaseUrl(), supabaseAnonKey());
 }
