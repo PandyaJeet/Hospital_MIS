@@ -4,6 +4,7 @@ import {
   LayoutDashboard,
   ListChecks,
   Pill,
+  Receipt,
   Scale,
   Settings,
   Stethoscope,
@@ -35,6 +36,7 @@ export const roleNav: Record<ShellRole, NavItem[]> = {
   nurse: [{ key: "tasks", href: "/tasks", icon: ClipboardList }],
   billing: [
     { key: "register", href: "/register", icon: UserPlus },
+    { key: "charges", href: "/charges", icon: Receipt },
     { key: "reconciliation", href: "/reconciliation", icon: Scale },
   ],
   admin: [
