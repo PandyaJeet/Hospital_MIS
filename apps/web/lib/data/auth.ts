@@ -98,11 +98,15 @@ async function realGetSessionUser(): Promise<Result<AuthUser>> {
     return { data: null, error: NOT_AUTHENTICATED };
   }
 
-  // RLS restricts this to the caller's own row, so no filter is needed.
-  // maybeSingle() avoids PGRST116 when RLS legitimately returns nothing (§6).
+  // Filter by id explicitly. RLS does NOT reduce this to a single row for every
+  // caller: an admin may read every profile in their tenant (auth-tenancy.md
+  // §2), so an unfiltered query would return many rows and maybeSingle() would
+  // fail for exactly the role that matters most.
+  // maybeSingle() then avoids PGRST116 when RLS legitimately returns nothing (§6).
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
     .select("id, tenant_id, role, full_name")
+    .eq("id", auth.user.id)
     .maybeSingle();
 
   if (profileError) {
