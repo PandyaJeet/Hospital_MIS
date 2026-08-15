@@ -106,8 +106,12 @@ async function mockGetPatient(id: string): Promise<Result<PatientDetail>> {
 }
 
 function notImplemented(): Promise<Result<PatientDetail>> {
-  // TODO(integration): replace with a tenant-scoped Supabase query (patients ⋈
-  // visits) once the Patient Chart contract is finalized with the backend.
+  // TODO(integration): the chart has no contract of its own — it composes
+  // existing ones. Demographics and allergies come from `patients`
+  // (docs/contracts/patient-registration.md) and visit history from `visits` +
+  // `clinical_notes` (docs/contracts/opd-queue.md §6, which also documents that
+  // notes are readable by admin/doctor/nurse but deliberately NOT billing).
+  // The shapes below are placeholders and do not match those tables yet.
   return Promise.resolve({
     data: null,
     error: {
