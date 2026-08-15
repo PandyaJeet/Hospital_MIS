@@ -31,6 +31,7 @@ const statusTone: Record<VisitStatus, NonNullable<BadgeProps["tone"]>> = {
 
 export default function QueuePage() {
   const t = useTranslations("queue");
+  const tNav = useTranslations("nav");
   const router = useRouter();
   const { entries, loading, error, refresh, fetchedAt } = useQueue();
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -204,7 +205,15 @@ export default function QueuePage() {
                     </Badge>
                   </div>
 
-                  <div className="mt-3 flex justify-end">
+                  <div className="mt-3 flex items-center justify-end gap-3">
+                    {!waiting ? (
+                      <Link
+                        href={`/prescribe/${entry.id}`}
+                        className="text-sm font-medium text-accent underline-offset-4 hover:underline"
+                      >
+                        {tNav("prescribe")}
+                      </Link>
+                    ) : null}
                     <Button
                       size="sm"
                       variant={waiting ? "primary" : "secondary"}
