@@ -15,6 +15,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export default function LoginPage() {
   const t = useTranslations("auth.login");
   const tv = useTranslations("auth.validation");
+  const te = useTranslations("auth.errors");
   const router = useRouter();
 
   const [email, setEmail] = useState("");
@@ -35,23 +36,39 @@ export default function LoginPage() {
     return Object.keys(next).length === 0;
   }
 
+  /** Map the contract's stable error codes to translated copy (rules.md §3.3). */
+  function messageFor(code: string) {
+    switch (code) {
+      case "INVALID_CREDENTIALS":
+        return t("invalidCredentials");
+      case "EMAIL_NOT_CONFIRMED":
+        return t("emailNotConfirmed");
+      case "NETWORK_ERROR":
+        return te("network");
+      case "PROFILE_MISSING":
+        return te("profileMissing");
+      case "PERMISSION_DENIED":
+        return te("permission");
+      default:
+        return te("generic");
+    }
+  }
+
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setFormError(null);
     if (!validate()) return;
 
     setSubmitting(true);
-    const { data, error } = await signIn({ email, password });
+    const { data, error } = await signIn(email, password);
     setSubmitting(false);
 
     if (error) {
-      setFormError(
-        error.code === "INVALID_CREDENTIALS"
-          ? t("invalidCredentials")
-          : error.message,
-      );
+      setFormError(messageFor(error.code));
       return;
     }
+    // `pending` users land on /onboarding — a normal state, not an error
+    // (auth-tenancy.md §7).
     if (data) router.push(roleHomePath[data.role]);
   }
 
@@ -106,10 +123,10 @@ export default function LoginPage() {
       <p className="mt-4 text-sm text-text-secondary">
         {t("noAccount")}{" "}
         <Link
-          href="/onboarding"
+          href="/signup"
           className="font-medium text-accent underline-offset-4 hover:underline"
         >
-          {t("createClinic")}
+          {t("createAccount")}
         </Link>
       </p>
     </Card>

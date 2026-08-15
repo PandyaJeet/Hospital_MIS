@@ -11,9 +11,9 @@ import {
   Users,
 } from "lucide-react";
 
-import type { Role } from "./roles";
+import type { ShellRole } from "./roles";
 
-export type { Role };
+export type { ShellRole };
 
 export interface NavItem {
   /** Key into the `nav` message namespace (see messages/*.json). */
@@ -26,7 +26,7 @@ export interface NavItem {
  * Top-level nav per role. Dynamic detail routes (patient/[id], invoice/[id],
  * vitals/[patientId]) are reached from within a screen, not the sidebar.
  */
-export const roleNav: Record<Role, NavItem[]> = {
+export const roleNav: Record<ShellRole, NavItem[]> = {
   doctor: [
     { key: "queue", href: "/queue", icon: ListChecks },
     { key: "prescribe", href: "/prescribe", icon: Pill },

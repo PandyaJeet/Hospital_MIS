@@ -7,10 +7,10 @@ import { useTranslations } from "next-intl";
 import { Activity, Menu, Search, X } from "lucide-react";
 
 import { LanguageSwitcher } from "@/components/shared/language-switcher";
-import { roleNav, type Role } from "@/lib/navigation";
+import { roleNav, type ShellRole } from "@/lib/navigation";
 import { cn } from "@/lib/utils/cn";
 
-function Brand({ role }: { role: Role }) {
+function Brand({ role }: { role: ShellRole }) {
   const t = useTranslations("roles");
   return (
     <div className="flex h-14 items-center gap-2 border-b border-border px-4">
@@ -29,7 +29,7 @@ function NavLinks({
   role,
   onNavigate,
 }: {
-  role: Role;
+  role: ShellRole;
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
@@ -67,7 +67,7 @@ export function AppShell({
   role,
   children,
 }: {
-  role: Role;
+  role: ShellRole;
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);

@@ -31,27 +31,59 @@
       "password": "Password",
       "submit": "Sign in",
       "submitting": "Signing in…",
-      "noAccount": "New clinic?",
-      "createClinic": "Create one",
-      "invalidCredentials": "Incorrect email or password."
+      "noAccount": "Don't have an account?",
+      "createAccount": "Create one",
+      "invalidCredentials": "Incorrect email or password.",
+      "emailNotConfirmed": "Please confirm your email address first, then sign in."
     },
-    "onboarding": {
-      "title": "Create your clinic",
-      "subtitle": "Set up your workspace and admin account",
-      "clinicName": "Clinic name",
-      "fullName": "Your full name",
+    "signup": {
+      "title": "Create your account",
+      "subtitle": "You'll set up or join a clinic next",
+      "fullName": "Full name",
       "email": "Email",
       "password": "Password",
-      "submit": "Create clinic",
-      "submitting": "Creating…",
+      "submit": "Create account",
+      "submitting": "Creating account…",
       "haveAccount": "Already have an account?",
       "signIn": "Sign in",
-      "emailTaken": "That email is already registered."
+      "emailTaken": "That email is already registered.",
+      "weakPassword": "Please choose a stronger password.",
+      "checkEmailTitle": "Confirm your email",
+      "checkEmailBody": "We've sent a confirmation link to {email}. Confirm it, then sign in to finish setting up your clinic.",
+      "goToSignIn": "Go to sign in"
+    },
+    "onboarding": {
+      "title": "Set up your workspace",
+      "subtitle": "Found a new clinic, or join one you've been invited to.",
+      "createTitle": "Create a clinic",
+      "createBody": "You'll become its admin and can invite your staff.",
+      "clinicName": "Clinic name",
+      "createSubmit": "Create clinic",
+      "creating": "Creating…",
+      "joinTitle": "Join with an invite",
+      "joinBody": "Paste the invite code your clinic admin sent you.",
+      "inviteToken": "Invite code",
+      "joinSubmit": "Join clinic",
+      "joining": "Joining…",
+      "alreadyInTenant": "You already belong to a clinic.",
+      "inviteNotFound": "This invite isn't valid. Ask your admin for a new one.",
+      "inviteExpired": "This invite has expired. Ask your admin to resend it.",
+      "inviteAlreadyAccepted": "This invite has already been used.",
+      "inviteEmailMismatch": "This invite was sent to a different email address.",
+      "emailNotConfirmed": "Please confirm your email address first.",
+      "signOut": "Sign out"
     },
     "validation": {
       "required": "This field is required.",
       "invalidEmail": "Enter a valid email address.",
       "passwordTooShort": "Password must be at least 6 characters."
+    },
+    "errors": {
+      "generic": "Something went wrong. Please try again.",
+      "network": "No internet connection — please check your network.",
+      "permission": "You don't have permission to do that.",
+      "profileMissing": "Your account isn't fully set up. Please contact support.",
+      "notAuthenticated": "Your session has expired. Please sign in again."
     }
   },
   "register": {
