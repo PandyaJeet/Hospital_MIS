@@ -1,0 +1,98 @@
+-- ============================================================================
+-- Migration:  audit_log_tenant_retention
+-- Purpose:    Turn `audit_log.tenant_id`'s ON DELETE behaviour from an accidental
+--             default into a documented decision, after it blocked `db:seed:reset`
+--             on the hosted project.
+--
+-- DECISION: THE CONSTRAINT STAYS `RESTRICT`. Teardown was the bug, not the FK.
+--
+-- ---------------------------------------------------------------------------
+-- WHAT HAPPENED
+-- ---------------------------------------------------------------------------
+-- `db:seed:reset` failed on its second run:
+--
+--   update or delete on table "tenants" violates foreign key constraint
+--   "audit_log_tenant_id_fkey" on table "audit_log"
+--
+-- Both seed tenants were left orphaned — every auth user gone, `profiles` correctly
+-- cascaded, but the tenant rows stuck behind their own audit history. One
+-- `create_invite()` call is enough to make a tenant permanently undeletable, and the
+-- very first thing an admin does generates one.
+--
+-- Third occurrence of one lesson (Memory.md §6): idempotent teardown is only tested
+-- by running it twice. The first two had a mechanical fix — adjust the ON DELETE
+-- action so the intended behaviour actually fires. This one has no such escape,
+-- because `tenant_id` is NOT NULL so there is no SET NULL to reach for.
+--
+-- ---------------------------------------------------------------------------
+-- WHY `RESTRICT` IS CORRECT, AND WHY `CASCADE` WOULD NOT EVEN HELP
+-- ---------------------------------------------------------------------------
+-- Counted on the live schema: **17 of the 18 foreign keys pointing at `tenants` are
+-- ON DELETE RESTRICT.** The single exception is `invites`, and that exception is
+-- coherent — a pending invite is disposable state, not history. Every table that
+-- holds a record of something that happened restricts: patients, visits,
+-- clinical_notes, prescriptions, vitals, tasks, beds, medication_administrations,
+-- lab_orders, lab_results, invoices, billing_line_items, profiles, and the three
+-- Tier 3 tables.
+--
+-- So `audit_log` restricting is CONSISTENT WITH THE ENTIRE SCHEMA rather than an
+-- oversight. And the decisive point: switching it to CASCADE **would not make tenant
+-- deletion work.** The delete would clear the audit trail and then immediately fail
+-- on `patients`, `visits`, `invoices` and fourteen others. The only thing CASCADE
+-- would achieve is the audit history silently vanishing while the clinical data still
+-- blocked — the worst of both outcomes, in the one table whose entire job is to be
+-- trustworthy about what happened.
+--
+-- The supporting argument, had the FK been the only blocker: an `audit_log` row is
+-- readable only by an admin OF THAT TENANT (see the SELECT policy). Once the tenant
+-- is gone the rows are readable by nobody through any normal session — they are inert
+-- personal data about named former staff (`actor_id`, `actor_role`, role-change
+-- history), retained past any purpose. That is closer to a DPDP liability than a
+-- compliance benefit, so "keep it forever regardless" is not the obvious win it looks
+-- like either.
+--
+-- ---------------------------------------------------------------------------
+-- WHAT THIS MEANS, STATED PLAINLY
+-- ---------------------------------------------------------------------------
+-- **A tenant with any audit history cannot be hard-deleted, and that is intended.**
+-- Deleting a tenant is not a product capability: there is no client DELETE path, no
+-- RPC, and 17 FKs standing in the way. It is a platform-owner action requiring the
+-- service role, and it requires deliberately dismantling that tenant's history first
+-- — including its audit trail. `supabase/scripts/seed.ts` now does exactly that for
+-- the dev dataset, in an explicit order, and is the reference for what a real
+-- offboarding procedure would have to do.
+--
+-- Contrast with `actor_id` on the same table, which deliberately has NO foreign key
+-- so an audit row can outlive the profile it names. The two answers differ because
+-- the questions differ: an audit row should survive the person it refers to, but it
+-- has no meaning — and no reader — once the CLINIC it belongs to is gone.
+--
+-- ---------------------------------------------------------------------------
+-- A SECOND, LATENT HAZARD FIXED IN THE SAME PASS
+-- ---------------------------------------------------------------------------
+-- `invites.tenant_id` is ON DELETE CASCADE, and `audit_invites_change()` fires on
+-- DELETE to record `invite.revoked`. So deleting a tenant would cascade its invites
+-- and each cascade would try to INSERT an audit row referencing the very tenant being
+-- deleted, inside the same statement. That is a latent failure the reported bug was
+-- masking — it could not be reached while the RESTRICT stopped the delete earlier.
+-- The teardown script now deletes invites explicitly BEFORE purging the audit log, so
+-- those rows are generated and then removed in a defined order rather than mid-delete.
+--
+-- ---------------------------------------------------------------------------
+-- WHY THIS MIGRATION IS COMMENTS ONLY
+-- ---------------------------------------------------------------------------
+-- Nothing about the schema should change — that is the finding. What was missing was
+-- that the choice did not LOOK like a choice, so the next person to hit this would
+-- reasonably "fix" it by reaching for CASCADE. These comments live in the catalogue
+-- (`\d+ audit_log`, pg_description) where that person will actually be looking, and
+-- `npm run verify:catalog` now asserts the constraint is still RESTRICT so a silent
+-- change to CASCADE fails a check rather than passing review.
+--
+-- Per rules.md §5.6, `20260811080100` is applied and is not edited.
+-- ============================================================================
+
+comment on constraint audit_log_tenant_id_fkey on public.audit_log is
+  'ON DELETE RESTRICT, DELIBERATELY — see migration 20260811080700. A tenant with any audit history cannot be hard-deleted; removing a clinic is a platform-owner action that must dismantle its history explicitly first. Do NOT change this to CASCADE: it would not make tenant deletion work (17 other FKs to tenants also RESTRICT), it would only make the audit trail vanish silently while clinical data still blocked. Contrast audit_log.actor_id, which has no FK at all so a row can outlive the person it names.';
+
+comment on column public.audit_log.tenant_id is
+  'The clinic the audited event belongs to, always derived server-side from the audited row (never client-supplied). ON DELETE RESTRICT by design: an audit row has no reader once its tenant is gone (the SELECT policy is admin-of-that-tenant only), so retaining it would be inert personal data about former staff — but deleting a tenant must still be a deliberate, explicit act rather than a cascade. See 20260811080700.';

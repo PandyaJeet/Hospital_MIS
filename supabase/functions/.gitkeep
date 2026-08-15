@@ -1,0 +1,7 @@
+# Supabase Edge Functions live here.
+#
+# Empty until Phase 2. Architecture.md reserves this directory for the few things
+# that genuinely need server-side execution — prescription/invoice PDF generation,
+# the WhatsApp webhook, and complex billing calculation — not as a general API
+# layer. Phase 1 tenancy logic is plain Postgres functions called via
+# supabase.rpc(), because none of it makes external calls or needs heavy compute.

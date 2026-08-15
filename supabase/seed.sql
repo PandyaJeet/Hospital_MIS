@@ -1,0 +1,34 @@
+-- ============================================================================
+-- supabase/seed.sql
+--
+-- Intentionally contains no data.
+--
+-- config.toml points `supabase db reset` at this file, so it stays here as the
+-- documented answer to "where is the seed data?" — which is:
+--
+--     npm run db:seed          (or db:seed:reset)  ->  supabase/scripts/seed.ts
+--
+-- WHY THE SEED IS NOT SQL
+-- The dataset is 2 tenants x 4 roles, and every one of those 8 fixture users has
+-- to be able to actually LOG IN — the entire purpose of the dataset is holding
+-- real sessions so cross-tenant RLS can be tested with two different accounts.
+--
+-- Supabase Auth (GoTrue) owns auth.users. A row inserted there by SQL is missing
+-- the bcrypt password hash format GoTrue expects and the companion
+-- auth.identities row, so the account exists but cannot authenticate. Those
+-- internals are also not part of Supabase's public contract, so hand-writing
+-- them would be a migration-time bomb waiting for the next GoTrue release.
+--
+-- So users are created through the Auth Admin API instead, and the seed script
+-- then drives create_tenant_and_assign_admin / create_invite / accept_invite to
+-- build the tenancy — meaning the seed exercises the real onboarding flow rather
+-- than fabricating its end state. The prompt for this phase explicitly allows
+-- this substitution for exactly this reason.
+--
+-- Nothing else belongs in this file yet. Phase 2 reference data that is NOT tied
+-- to auth.users (e.g. the basic Indian drug list) is a good fit for real SQL
+-- seeding and can be added here then.
+-- ============================================================================
+
+-- No-op. See above.
+select 1 where false;

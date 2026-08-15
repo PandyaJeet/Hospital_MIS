@@ -1,0 +1,10 @@
+# Generated database types land here:
+#
+#     npm run db:types      ->  supabase/types/database.types.ts
+#
+# The file is generated, never hand-written (rules.md §5.3). It requires a linked
+# project, so it cannot be produced until the migrations are pushed — see the
+# handover notes for what is still blocked.
+#
+# Prince's lib/supabase/types.ts should re-export from the generated file rather
+# than declaring its own table shapes.

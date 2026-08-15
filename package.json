@@ -1,0 +1,45 @@
+{
+  "name": "hospital-mis",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Multi-tenant Hospital MIS for Indian clinics/hospitals. Root workspace holds backend (Supabase) tooling only; the Next.js app lives in apps/web.",
+  "type": "module",
+  "scripts": {
+    "db:push": "tsx supabase/scripts/db.ts push",
+    "db:migrations": "tsx supabase/scripts/db.ts migrations",
+    "db:diff": "tsx supabase/scripts/db.ts diff",
+    "db:query": "tsx supabase/scripts/db.ts query",
+    "verify:catalog": "tsx supabase/scripts/db.ts query --file supabase/tests/remote/verify-catalog.sql",
+    "audit:codes": "tsx supabase/scripts/audit-error-codes.ts",
+    "db:types": "tsx supabase/scripts/db.ts types",
+    "db:seed": "tsx supabase/scripts/seed.ts",
+    "db:seed:reset": "tsx supabase/scripts/seed.ts --reset",
+    "typecheck": "tsc --noEmit",
+    "test:rls": "tsx supabase/tests/local/rls-isolation.test.ts",
+    "test:onboarding": "tsx supabase/tests/local/onboarding-flow.test.ts",
+    "test:opd": "tsx supabase/tests/local/opd-flow.test.ts",
+    "test:isolation2": "tsx supabase/tests/local/phase2-isolation.test.ts",
+    "test:phase3": "tsx supabase/tests/local/phase3-flow.test.ts",
+    "test:isolation3": "tsx supabase/tests/local/phase3-isolation.test.ts",
+    "test:phase3:remote": "tsx supabase/tests/remote/phase3-flow.remote.test.ts",
+    "test:phase4": "tsx supabase/tests/local/phase4-admin.test.ts",
+    "test:pentest": "tsx supabase/tests/local/phase5-pentest.test.ts",
+    "test:phase6": "tsx supabase/tests/local/phase6-ipd-billing.test.ts",
+    "test:concurrency": "tsx supabase/tests/remote/concurrency.remote.test.ts",
+    "test:local": "npm run typecheck && npm run test:rls && npm run test:onboarding && npm run test:opd && npm run test:isolation2 && npm run test:phase3 && npm run test:isolation3 && npm run test:phase4 && npm run test:phase6 && npm run test:pentest",
+    "test:rls:remote": "tsx supabase/tests/remote/rls-isolation.remote.test.ts",
+    "test:opd:remote": "tsx supabase/tests/remote/opd-flow.remote.test.ts",
+    "test:remote": "npm run test:rls:remote && npm run test:opd:remote && npm run test:phase3:remote && npm run test:concurrency",
+    "verify:remote": "npm run db:seed:reset && npm run test:remote"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.3.13",
+    "@types/node": "24.10.1",
+    "supabase": "2.113.0",
+    "tsx": "4.20.6",
+    "typescript": "5.9.3"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "2.58.0"
+  }
+}
