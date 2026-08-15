@@ -32,8 +32,8 @@ export async function createClient() {
             // Deliberate, documented exception to rules.md §3.2 (no silent catch):
             // `setAll` throws when invoked from a Server Component because cookies
             // are read-only in that context. This is expected and benign — the
-            // session cookie is refreshed by middleware (added with Phase 1 auth),
-            // so there is nothing to surface to the user here.
+            // session cookie is refreshed by `proxy.ts`, so there is nothing to
+            // surface to the user here.
           }
         },
       },

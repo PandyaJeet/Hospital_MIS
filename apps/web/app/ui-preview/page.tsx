@@ -1,3 +1,4 @@
+import { notFound } from "next/navigation";
 import { Inbox, Plus } from "lucide-react";
 
 import {
@@ -11,10 +12,18 @@ import {
 } from "@/components/ui";
 
 /**
- * Temporary dev-only page to eyeball the shared UI primitives against the
- * Design.md tokens. Remove once the primitives are exercised by real screens.
+ * Dev-only page to eyeball the shared UI primitives against the Design.md tokens.
+ *
+ * Returns 404 in production. `middleware.ts` would also bounce it (no role has
+ * access), but a build-time gate means it cannot be reached even if the guard
+ * config changes.
  */
 export default function UiPreviewPage() {
+  if (process.env.NODE_ENV === "production") notFound();
+  return <UiPreview />;
+}
+
+function UiPreview() {
   return (
     <main className="mx-auto w-full max-w-4xl flex-1 px-6 py-12">
       <header className="mb-10">
