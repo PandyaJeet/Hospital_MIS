@@ -1,30 +1,82 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { Inbox } from "lucide-react";
+import { AlertCircle, AlertTriangle, Inbox } from "lucide-react";
 
 import {
   Badge,
   Button,
   EmptyState,
   Skeleton,
+  Spinner,
   type BadgeProps,
 } from "@/components/ui";
 import { useQueue } from "@/hooks/use-queue";
-import type { QueueStatus } from "@/lib/data/queue";
+import {
+  setVisitStatus,
+  waitSeconds,
+  type QueueEntry,
+  type VisitStatus,
+} from "@/lib/data/queue";
 
-const statusTone: Record<QueueStatus, NonNullable<BadgeProps["tone"]>> = {
-  waiting: "warning",
+const statusTone: Record<VisitStatus, NonNullable<BadgeProps["tone"]>> = {
+  queued: "warning",
   in_consultation: "info",
   done: "success",
+  cancelled: "neutral",
 };
 
 export default function QueuePage() {
   const t = useTranslations("queue");
   const router = useRouter();
-  const { entries, loading, error, refresh } = useQueue();
+  const { entries, loading, error, refresh, fetchedAt } = useQueue();
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  function messageFor(code: string, from?: VisitStatus, to?: VisitStatus) {
+    switch (code) {
+      case "INVALID_STATUS_TRANSITION":
+        return t("invalidTransition", {
+          from: from ? t(`status.${from}`) : "",
+          to: to ? t(`status.${to}`) : "",
+        });
+      case "VISIT_NOT_FOUND":
+        return t("visitNotFound");
+      case "NOT_STAFF":
+        return t("notStaff");
+      case "NETWORK_ERROR":
+        return t("networkError");
+      case "PERMISSION_DENIED":
+        return t("permissionError");
+      default:
+        return t("genericError");
+    }
+  }
+
+  async function advance(entry: QueueEntry, to: VisitStatus) {
+    setActionError(null);
+    setBusyId(entry.id);
+    const { error: err } = await setVisitStatus(entry.id, to);
+    setBusyId(null);
+
+    if (err) {
+      // The mock carries [from, to] in `fields`; the real RPC returns them as
+      // named properties, which fromRpc keeps on the error message.
+      const [from, attempted] = err.fields ?? [];
+      setActionError(
+        messageFor(
+          err.code,
+          (from as VisitStatus) ?? entry.status,
+          (attempted as VisitStatus) ?? to,
+        ),
+      );
+      return;
+    }
+    await refresh();
+  }
 
   return (
     <div className="mx-auto w-full max-w-2xl px-6 py-8">
@@ -39,6 +91,19 @@ export default function QueuePage() {
           </span>
         ) : null}
       </div>
+
+      {actionError ? (
+        <p
+          role="alert"
+          className="mt-4 flex items-center gap-1.5 text-sm text-text-secondary"
+        >
+          <AlertCircle
+            className="h-4 w-4 shrink-0 text-warning"
+            aria-hidden="true"
+          />
+          {actionError}
+        </p>
+      ) : null}
 
       <div className="mt-6">
         {loading ? (
@@ -77,32 +142,90 @@ export default function QueuePage() {
           />
         ) : (
           <ul className="flex flex-col gap-3">
-            {entries.map((entry) => (
-              <li key={entry.id}>
-                <Link
-                  href={`/patient/${entry.id}`}
-                  className="flex items-center gap-4 rounded-lg border border-border bg-surface p-4 transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            {entries.map((entry) => {
+              const minutes = Math.floor(waitSeconds(entry, fetchedAt) / 60);
+              const waiting = entry.status === "queued";
+              const to: VisitStatus = waiting ? "in_consultation" : "done";
+              const busy = busyId === entry.id;
+
+              return (
+                <li
+                  key={entry.id}
+                  className="rounded-lg border border-border bg-surface p-4"
                 >
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent-subtle text-sm font-semibold tabular-nums text-accent">
-                    {entry.tokenNumber}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-medium text-text-primary">
-                      {entry.patientName}
-                    </p>
-                    <p className="text-sm tabular-nums text-text-secondary">
-                      {t("years", { age: entry.age })}
-                      {entry.status === "waiting"
-                        ? ` · ${t("waitMinutes", { minutes: entry.waitMinutes })}`
-                        : ""}
-                    </p>
+                  <div className="flex items-start gap-4">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent-subtle text-sm font-semibold tabular-nums text-accent">
+                      {entry.queue_number}
+                    </span>
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Link
+                          href={`/patient/${entry.patient.id}`}
+                          className="truncate font-medium text-text-primary underline-offset-4 hover:underline"
+                        >
+                          {entry.patient.full_name}
+                        </Link>
+                        {entry.visit_type === "follow_up" ? (
+                          <Badge tone="accent">{t("followUp")}</Badge>
+                        ) : null}
+                      </div>
+                      <p className="text-sm tabular-nums text-text-secondary">
+                        {t("uhid", { number: entry.patient.patient_number })}
+                        {entry.patient.age_years !== null
+                          ? ` · ${t("years", { age: entry.patient.age_years })}`
+                          : ""}
+                        {" · "}
+                        {waiting
+                          ? t("waitMinutes", { minutes })
+                          : t("waitedMinutes", { minutes })}
+                      </p>
+
+                      {/* An allergy is genuine clinical urgency — the one place
+                          Design.md §2 permits red. */}
+                      {entry.patient.allergies ? (
+                        <p className="mt-1.5 flex items-start gap-1.5 text-sm text-critical">
+                          <AlertTriangle
+                            className="mt-0.5 h-4 w-4 shrink-0"
+                            aria-hidden="true"
+                          />
+                          <span>
+                            <span className="font-medium">
+                              {t("allergyLabel")}:
+                            </span>{" "}
+                            {entry.patient.allergies}
+                          </span>
+                        </p>
+                      ) : null}
+                    </div>
+
+                    <Badge tone={statusTone[entry.status]}>
+                      {t(`status.${entry.status}`)}
+                    </Badge>
                   </div>
-                  <Badge tone={statusTone[entry.status]}>
-                    {t(`status.${entry.status}`)}
-                  </Badge>
-                </Link>
-              </li>
-            ))}
+
+                  <div className="mt-3 flex justify-end">
+                    <Button
+                      size="sm"
+                      variant={waiting ? "primary" : "secondary"}
+                      disabled={busy}
+                      onClick={() => void advance(entry, to)}
+                    >
+                      {busy ? (
+                        <>
+                          <Spinner />
+                          {t("updating")}
+                        </>
+                      ) : waiting ? (
+                        t("startConsultation")
+                      ) : (
+                        t("markDone")
+                      )}
+                    </Button>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>

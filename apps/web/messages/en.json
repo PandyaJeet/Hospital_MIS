@@ -127,17 +127,31 @@
     "subtitle": "Today's OPD queue",
     "count": "{count} in queue",
     "empty": "No patients in the queue yet",
-    "emptyBody": "Registered patients will appear here as they check in.",
+    "emptyBody": "Patients appear here once they're checked in at the front desk.",
     "registerCta": "Register patient",
-    "waitMinutes": "{minutes} min wait",
+    "waitMinutes": "waiting {minutes} min",
+    "waitedMinutes": "waited {minutes} min",
     "years": "{age} yrs",
+    "uhid": "UHID {number}",
+    "followUp": "Follow-up",
+    "allergyLabel": "Allergy",
     "loadError": "Couldn't load the queue. Please try again.",
     "retry": "Retry",
+    "startConsultation": "Start consultation",
+    "markDone": "Mark done",
+    "updating": "Updating…",
     "status": {
-      "waiting": "Waiting",
+      "queued": "Waiting",
       "in_consultation": "In consultation",
-      "done": "Done"
-    }
+      "done": "Done",
+      "cancelled": "Cancelled"
+    },
+    "invalidTransition": "A visit that is already {from} cannot be marked {to}.",
+    "visitNotFound": "That visit does not exist at this clinic.",
+    "notStaff": "Only clinic staff can do this.",
+    "genericError": "Something went wrong. Please try again.",
+    "networkError": "No internet connection — please check your network.",
+    "permissionError": "You don't have permission to do that."
   },
   "chart": {
     "notFoundTitle": "Patient not found",

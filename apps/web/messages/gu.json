@@ -127,17 +127,31 @@
     "subtitle": "આજની ઓપીડી કતાર",
     "count": "કતારમાં {count}",
     "empty": "કતારમાં હજી કોઈ દર્દી નથી",
-    "emptyBody": "નોંધાયેલા દર્દીઓ ચેક-ઇન થતાં અહીં દેખાશે.",
+    "emptyBody": "ફ્રન્ટ ડેસ્ક પર ચેક-ઇન થયા પછી દર્દીઓ અહીં દેખાશે.",
     "registerCta": "દર્દી નોંધો",
-    "waitMinutes": "{minutes} મિનિટ રાહ",
+    "waitMinutes": "{minutes} મિનિટથી રાહ જોઈ રહ્યા છે",
+    "waitedMinutes": "{minutes} મિનિટ રાહ જોઈ",
     "years": "{age} વર્ષ",
+    "uhid": "UHID {number}",
+    "followUp": "ફોલો-અપ",
+    "allergyLabel": "એલર્જી",
     "loadError": "કતાર લોડ થઈ શકી નથી. કૃપા કરી ફરી પ્રયાસ કરો.",
     "retry": "ફરી પ્રયાસ કરો",
+    "startConsultation": "પરામર્શ શરૂ કરો",
+    "markDone": "પૂર્ણ ચિહ્નિત કરો",
+    "updating": "અપડેટ થઈ રહ્યું છે…",
     "status": {
-      "waiting": "રાહ જોઈ રહ્યા છે",
+      "queued": "રાહ જોઈ રહ્યા છે",
       "in_consultation": "પરામર્શમાં",
-      "done": "પૂર્ણ"
-    }
+      "done": "પૂર્ણ",
+      "cancelled": "રદ"
+    },
+    "invalidTransition": "જે મુલાકાત પહેલેથી {from} છે તેને {to} ચિહ્નિત કરી શકાતી નથી.",
+    "visitNotFound": "આ મુલાકાત આ ક્લિનિકમાં અસ્તિત્વમાં નથી.",
+    "notStaff": "ફક્ત ક્લિનિક સ્ટાફ આ કરી શકે છે.",
+    "genericError": "કંઈક ખોટું થયું. કૃપા કરી ફરી પ્રયાસ કરો.",
+    "networkError": "ઇન્ટરનેટ કનેક્શન નથી — કૃપા કરી તમારું નેટવર્ક તપાસો.",
+    "permissionError": "તમને આ કરવાની પરવાનગી નથી."
   },
   "chart": {
     "notFoundTitle": "દર્દી મળ્યો નથી",
