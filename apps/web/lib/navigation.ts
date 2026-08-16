@@ -32,15 +32,26 @@ export const roleNav: Record<ShellRole, NavItem[]> = {
     { key: "queue", href: "/queue", icon: ListChecks },
     { key: "prescribe", href: "/prescribe", icon: Pill },
     { key: "rounds", href: "/rounds", icon: Stethoscope },
+    { key: "register", href: "/register", icon: UserPlus },
   ],
-  nurse: [{ key: "tasks", href: "/tasks", icon: ClipboardList }],
+  nurse: [
+    { key: "tasks", href: "/tasks", icon: ClipboardList },
+    { key: "rounds", href: "/rounds", icon: Stethoscope },
+    { key: "register", href: "/register", icon: UserPlus },
+  ],
   billing: [
     { key: "register", href: "/register", icon: UserPlus },
     { key: "charges", href: "/charges", icon: Receipt },
     { key: "reconciliation", href: "/reconciliation", icon: Scale },
   ],
+  // An admin may reach every staff screen (see route-access.ts). Listing only
+  // the admin-only three left the rest reachable by typed URL and nothing else,
+  // which reads as "missing feature" rather than "different menu".
   admin: [
     { key: "dashboard", href: "/dashboard", icon: LayoutDashboard },
+    { key: "queue", href: "/queue", icon: ListChecks },
+    { key: "register", href: "/register", icon: UserPlus },
+    { key: "charges", href: "/charges", icon: Receipt },
     { key: "users", href: "/users", icon: Users },
     { key: "settings", href: "/settings", icon: Settings },
   ],

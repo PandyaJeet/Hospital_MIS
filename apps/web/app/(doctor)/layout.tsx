@@ -1,7 +1,17 @@
 import type { ReactNode } from "react";
 
 import { AppShell } from "@/components/shared/app-shell";
+import { getShellIdentity } from "@/lib/auth/shell-identity";
 
-export default function DoctorLayout({ children }: { children: ReactNode }) {
-  return <AppShell role="doctor">{children}</AppShell>;
+export default async function DoctorLayout({
+  children,
+}: {
+  children: ReactNode;
+}) {
+  const { role, fullName } = await getShellIdentity("doctor");
+  return (
+    <AppShell role={role} fullName={fullName}>
+      {children}
+    </AppShell>
+  );
 }

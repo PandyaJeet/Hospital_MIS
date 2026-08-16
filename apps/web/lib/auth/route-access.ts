@@ -39,11 +39,22 @@ const roleRoutes: Record<Role, string[]> = {
     "/rounds",
     "/tasks",
     "/vitals",
+    // register_patient() accepts any staff role, and a Tier 1 solo practice has
+    // no receptionist — the doctor is the front desk. Withholding this made
+    // patient registration unreachable for the product's smallest customer.
+    "/register",
     ...STAFF_PATIENT_ACCESS,
   ],
   // A nurse may read consultation notes but not author them — the screen itself
   // enforces that; billing is excluded from /consult entirely.
-  nurse: ["/tasks", "/vitals", "/rounds", "/consult", ...STAFF_PATIENT_ACCESS],
+  nurse: [
+    "/tasks",
+    "/vitals",
+    "/rounds",
+    "/consult",
+    "/register",
+    ...STAFF_PATIENT_ACCESS,
+  ],
   billing: [
     "/register",
     "/charges",

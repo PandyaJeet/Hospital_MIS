@@ -4,7 +4,9 @@
     "account": "Account",
     "language": "Language",
     "openMenu": "Open menu",
-    "closeMenu": "Close menu"
+    "closeMenu": "Close menu",
+    "signOut": "Sign out",
+    "signOutFailed": "Couldn't sign out. Please try again."
   },
   "roles": {
     "doctor": "Doctor",

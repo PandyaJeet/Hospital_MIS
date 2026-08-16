@@ -7,6 +7,7 @@ import { useTranslations } from "next-intl";
 import { Activity, Menu, Search, X } from "lucide-react";
 
 import { LanguageSwitcher } from "@/components/shared/language-switcher";
+import { UserMenu } from "@/components/shared/user-menu";
 import { roleNav, type ShellRole } from "@/lib/navigation";
 import { cn } from "@/lib/utils/cn";
 
@@ -65,9 +66,11 @@ function NavLinks({
 
 export function AppShell({
   role,
+  fullName,
   children,
 }: {
   role: ShellRole;
+  fullName: string | null;
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -132,13 +135,7 @@ export function AppShell({
 
           <div className="ml-auto flex items-center gap-2">
             <LanguageSwitcher />
-            <button
-              type="button"
-              aria-label={t("account")}
-              className="flex h-8 w-8 items-center justify-center rounded-full bg-accent-subtle text-sm font-medium text-accent"
-            >
-              P
-            </button>
+            <UserMenu role={role} fullName={fullName} />
           </div>
         </header>
 

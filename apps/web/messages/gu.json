@@ -4,7 +4,9 @@
     "account": "ખાતું",
     "language": "ભાષા",
     "openMenu": "મેનૂ ખોલો",
-    "closeMenu": "મેનૂ બંધ કરો"
+    "closeMenu": "મેનૂ બંધ કરો",
+    "signOut": "સાઇન આઉટ",
+    "signOutFailed": "સાઇન આઉટ થઈ શક્યું નથી. ફરી પ્રયાસ કરો."
   },
   "roles": {
     "doctor": "ડૉક્ટર",

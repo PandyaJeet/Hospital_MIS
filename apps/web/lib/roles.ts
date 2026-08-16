@@ -23,6 +23,10 @@ export function isRole(value: string): value is Role {
   return (roles as readonly string[]).includes(value);
 }
 
+export function isShellRole(value: string): value is ShellRole {
+  return (shellRoles as readonly string[]).includes(value);
+}
+
 /** Landing screen per role — auth-tenancy.md §7. */
 export const roleHomePath: Record<Role, string> = {
   pending: "/onboarding",

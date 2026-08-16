@@ -4,7 +4,9 @@
     "account": "खाता",
     "language": "भाषा",
     "openMenu": "मेनू खोलें",
-    "closeMenu": "मेनू बंद करें"
+    "closeMenu": "मेनू बंद करें",
+    "signOut": "साइन आउट",
+    "signOutFailed": "साइन आउट नहीं हो सका। दोबारा कोशिश करें।"
   },
   "roles": {
     "doctor": "डॉक्टर",

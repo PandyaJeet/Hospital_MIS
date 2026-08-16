@@ -1,7 +1,17 @@
 import type { ReactNode } from "react";
 
 import { AppShell } from "@/components/shared/app-shell";
+import { getShellIdentity } from "@/lib/auth/shell-identity";
 
-export default function AdminLayout({ children }: { children: ReactNode }) {
-  return <AppShell role="admin">{children}</AppShell>;
+export default async function AdminLayout({
+  children,
+}: {
+  children: ReactNode;
+}) {
+  const { role, fullName } = await getShellIdentity("admin");
+  return (
+    <AppShell role={role} fullName={fullName}>
+      {children}
+    </AppShell>
+  );
 }
