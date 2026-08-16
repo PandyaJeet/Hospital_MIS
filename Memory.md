@@ -15,7 +15,7 @@
 | Field | Value |
 |---|---|
 | Project | Hospital MIS for Indian clinics/hospitals |
-| Current phase | **Backend: Phases 1–6 COMPLETE and live.** **Frontend: `apps/web` now exists** (scaffold, shell, design system, i18n, and five Phase 1–2 screens) but runs **entirely on mocks** — no feature is integrated yet, and the mock layer was written against guessed shapes that do not match the real contracts (§4). **Phase 6 is not in `phases.md`** — that file plans Phase 0–5 only; Phase 6 was scoped from the gaps this file kept naming. Playwright E2E **no longer blocked** (`apps/web` exists); backup posture still **unverified and a pilot blocker** (§6) |
+| Current phase | **Backend: Phases 1–6 COMPLETE and live.** **Frontend: 14 surfaces built against the real contracts, covering Phases 1–4**, plus route guards — but running **entirely on mocks**. Formally the project is still at **Phase 1's Definition of Done**, because every DoD needs both sides to meet and the UI has never successfully talked to the database (§6). **Phase 6 is not in `phases.md`** — that file plans Phase 0–5 only. Backup posture still **unverified and a pilot blocker** (§6) |
 | Stack | Next.js 16 (App Router) + Tailwind v4 + Supabase (Postgres, Auth, Storage; `@supabase/ssr`) + Vercel; i18n via next-intl (en / hi / gu) |
 | Repo layout | Single repo. Backend tooling + `supabase/` at root (root `package.json` is backend-only); the Next.js app is self-contained in `apps/web` with its own `package.json`. Frontend history merged from `prince/phase-0-frontend` |
 | Architecture model | Cloud-hosted, single Supabase project, multi-tenant via `tenant_id` + RLS |
@@ -29,7 +29,8 @@
 | Schema size | **26 tables + 10 views** (Phase 6 added `wards`, `bed_stays`, `ipd_accrual_current`). `verify:catalog` group 17 enumerates these from the catalogue, so a new table is covered the day it exists |
 | ⚠️ Types stale | `supabase/types/database.types.ts` does **NOT** include Phase 4, 5 or 6. `supabase gen types` runs in a Docker container and Docker Desktop's WSL integration is still down. **Run `npm run db:types` once Docker is back** — no code change needed |
 | ⚠️ Backups | **Plan tier / PITR state is UNKNOWN** — needs a `SUPABASE_ACCESS_TOKEN` nobody has here. WAL archiving is verified live and healthy (`archive_mode=on`, 99 segments, 0 failures), but retention is a platform-side question. **Confirm in the dashboard before any real patient data.** `docs/backup-and-restore.md` |
-| Last updated | 2026-08-08 — frontend branch merged into the backend history; §1, §4 and §5 updated to reflect that `apps/web` exists and what still separates it from the real API |
+| Frontend branch | `prince/phase-0-frontend` — merged with `main`'s backend history, **not yet merged back into `main`**. Vercel is on Jeet's account and GitHub-connected, so see the deploy caveats in §6 before merging |
+| Last updated | 2026-08-08 — frontend rebuilt against the real contracts: 14 surfaces, route guards, and the deactivation guard. §1, §4, §5 and §6 rewritten; the previous entry described five guessed-shape screens and claimed no guards existed |
 
 ---
 
@@ -170,6 +171,10 @@ Format: `[Date] Decision — Reason`
 - `[2026-08-14]` **Cancelling withdraws medicine charges only while they are UNINVOICED, and counts the rest.** Not a new rule — `set_lab_order_status()` settled this exact question in Phase 3 and its comment is the precedent: "an issued tax document cannot be silently rewritten". Deleting unconditionally would alter an issued invoice's basis; leaving them all would bill a patient for medicine explicitly never dispensed until somebody reads a reconciliation report. So: pending lines deleted, invoiced lines counted and returned as `charges_invoiced`, which is a signal a **credit note** is needed — and credit notes are not modelled, so it must be visible rather than swallowed
 - `[2026-08-14]` **The Tier 2 gate is NOT duplicated on the billing path.** A `bed_stays` row can only be created by `admit_patient_to_bed()`, which already returns `TIER_NOT_ENABLED` below Tier 2 before looking anything up. No stay, no charge. A second explicit tier check on the charge would gate the same thing twice in two places and could disagree with the first. Asserted end to end: a Tier 1 admission is refused and zero bed stays exist to bill
 - `[2026-08-14]` **`admit_patient_to_bed()` now locks both beds in `id` order** (the Phase 5 finding, applied). Target-then-source meant two mirror-image transfers acquired in opposite orders and could deadlock on `beds` alone. This completes the lock-order convention: Phase 5 settled "always lock `visits` first", Phase 6 adds "then beds in id order"
+- `[2026-08-08]` **Frontend types follow the contracts' own field names (snake_case), not camelCase** — reads less like idiomatic JS but removes a translation layer between UI and database, which is exactly where integration bugs hide
+- `[2026-08-08]` **The four contracts both devs wrote independently were resolved in favour of the backend's versions** at the merge, since those were the ones implemented and tested. The frontend's guessed `patient-chart.md` was deleted rather than kept alongside them — a wrong doc among correct ones is worse than no doc
+- `[2026-08-08]` **Route guards live in `proxy.ts` (server-side), not a client layout guard** as `user-management.md` §4 suggests. Catches navigation before render; the contract confirms it works, since reading your own profile row is the one query that still succeeds when deactivated
+- `[2026-08-08]` **The mock-mode guard bypass is gated on `NODE_ENV`**, so a misconfigured `NEXT_PUBLIC_USE_MOCK=true` cannot disable authentication in a deployed build. Consequence: mock mode is `next dev` only
 - `[2026-08-12]` **`rules.md` §5.5's "no `console.log` in committed code" is explicitly NOT applied to `supabase/scripts/`.** Those 49 calls are CLI tools whose stdout *is* their interface; a seed script that printed nothing would be unusable. §5.5 governs application code, where a logger utility belongs. Recorded so a future sweep does not "fix" it by silencing the tooling. Verified separately that none of them log PII: they emit fixture emails (`*@hmis-seed.example.com`), tenant names, uuids and counts, and the seed script never touches patient tables
 
 ---
@@ -277,21 +282,46 @@ Format: `[Date] Decision — Reason`
 - **App shell** (`components/shared/app-shell.tsx`): responsive sidebar + top bar, per-role nav, mobile drawer; minimal patient layout; auth screens standalone
 - **Design system**: Design.md tokens ported to Tailwind v4 CSS-first `@theme` (no `tailwind.config.js`); Inter + Noto Sans Devanagari + Noto Sans Gujarati; primitives in `components/ui` — Button, Card, Badge, Input, Textarea, Skeleton, Spinner, EmptyState
 - **i18n**: next-intl, **cookie-based (no `[locale]` URL segments)**, three locales — **English, Hindi, Gujarati** — with a top-bar language switcher. Hindi/Gujarati strings are developer-written and need native review (§6)
-- **Supabase client boilerplate**: `lib/supabase/client.ts` + `server.ts` via `@supabase/ssr`. **Still typed against a placeholder `Database`** — must be swapped to `supabase/types/database.types.ts`
-- **Screens built, all against mock data** (`lib/data/*` behind `NEXT_PUBLIC_USE_MOCK`): login, onboarding, patient registration, OPD queue (`hooks/use-queue.ts`, shaped for a later Realtime swap), patient chart (server component, read-only), prescribe (dynamic medication list). Navigable slice: register → queue → chart → prescribe
-- ⚠️ **The mock layer was built against frontend-*guessed* contracts, before Jeet's were available, and does not match reality.** Known gaps to close at integration: only 4 roles (missing **`pending`** — the state every user starts in — and `patient`); `{data, error}` instead of the real **two-channel `{ok, code}` envelope**; onboarding modelled as one call instead of `auth.signUp` → trigger → `create_tenant_and_assign_admin(name)`; duplicate-patient treated as a hard error rather than an overridable prompt; no prescription safety check or draft→issued lifecycle; **the entire invite flow is missing** (`create_invite` / `accept_invite`, needs `/invite/[token]`)
-- Not built on the frontend: `middleware.ts` role guards (every route is currently reachable directly), `useTenant()`, clinical notes, billing/invoicing, and all Phase 3–6 surfaces
+- **Supabase client**: `lib/supabase/client.ts` + `server.ts` via `@supabase/ssr`, now typed off the **generated** `supabase/types/database.types.ts` (re-exported from `lib/supabase/types.ts`)
+- **Route guards + session refresh**: `apps/web/proxy.ts` (Next 16 renamed the `middleware` convention to `proxy`). Refreshes the auth cookie, sends no-session to `/login`, routes `pending` to `/onboarding` without looping, bounces a role off another role's screens, and redirects a **deactivated** user to `/login?reason=account_deactivated`. Fails closed when Supabase config is missing. The mock bypass is gated on `NODE_ENV`, so `NEXT_PUBLIC_USE_MOCK=true` **cannot** disable auth in a deployed build. Verified against a production build. Role→route map in `lib/auth/route-access.ts`
+
+**Frontend / Prince — screens rebuilt against Jeet's real contracts (2026-08-08) — STILL ON MOCKS**
+
+Every feature module is dual-mode: the real Supabase path is written, `NEXT_PUBLIC_USE_MOCK` selects the mock. **The real path has never executed** (§6).
+
+| Surface | Route | Contract |
+|---|---|---|
+| Login / signup / onboarding | `(auth)` | `auth-tenancy.md` |
+| Patient registration | `/register` | `patient-registration.md` |
+| OPD queue (+ status transitions, Realtime) | `/queue` | `opd-queue.md` |
+| Clinical notes | `/consult/[visitId]` | `opd-queue.md` §6 |
+| Prescribing (draft→issued, safety check) | `/prescribe/[visitId]` | `prescriptions.md` |
+| Patient chart (read-only) | `/patient/[id]` | composes registration + queue |
+| Pending charges → invoice → payment | `/charges`, `/invoice/[id]` | `billing.md` |
+| Nurse task board (Realtime) | `/tasks` | `nurse-tasks.md` |
+| Vitals entry | `/vitals/[visitId]` | `vitals-and-rounds.md` |
+| Doctor's ward rounds (Realtime) | `/rounds` | `vitals-and-rounds.md` §4 |
+| Users, roles, invites, deactivation | `/users` | `user-management.md` |
+| Clinic settings (GST posture) | `/settings` | `billing.md` §2 |
+| Admin dashboard | `/dashboard` | `admin-dashboard.md` |
+| Billing reconciliation | `/reconciliation` | `admin-dashboard.md` §8 |
+
+Contract nuances deliberately honoured (each was a way to get it wrong): duplicate phone is an overridable prompt, not a wall; no field blocks a clinical note or a vitals save; prescription safety renders **by severity** with a blocking interrupt only on `high`, and a failed check never reads as safe; tax is per line and a non-GST clinic gets a bill of supply with no tax section; a ₹0 charge means "price unknown", not free; rounds shows each measurement's own age because values come from different moments; occupancy shows "no beds" rather than 0%; staff activity is never called utilization; users cannot be deleted, only deactivated.
 
 ### In Progress
 - Nothing on the backend. Phases 1–6 are built, pushed and verified
 - **One outstanding chore:** `npm run db:types` (needs Docker — see §1 and §6)
-- **Frontend integration** — `apps/web` now exists and is merged, so the Workflow.md §4 checkpoints can finally start. `USE_MOCK` is still **on**; `lib/data/*` needs rewriting against the real contracts before it can be flipped off
+- **Frontend integration** — blocked, not merely pending: the seeded accounts would not authenticate (§6)
 
 ### Not Started
-- **Frontend ↔ backend integration for every feature.** No Workflow.md §4 checkpoint has completed yet — the UI has never talked to the real database
-- `apps/web` remaining: Vercel deploy + CI/CD (last Phase 0 item), `middleware.ts` role routing, `useTenant()`
-- Invite **email delivery** — RPC returns a token, nothing sends it. Still deferred (see §7)
-- **Playwright E2E** — spec written (`docs/playwright-e2e-spec.md`). **No longer structurally blocked: `apps/web` now exists.** Still unimplemented
+- **Frontend ↔ backend integration for every feature.** No Workflow.md §4 checkpoint has completed. One real bug was already found the first time a real query ran (§6)
+- **IPD / beds UI** — admit, discharge, transfer, ward and bed management (`ipd-beds.md`). Note `/rounds` already *displays* inpatients, so nothing in the UI can currently create what that screen shows
+- **Lab orders + critical-value alerts UI** (`lab-orders.md`) — including the acknowledgement flow
+- **Audit log viewer** (`audit-log.md`)
+- **Patient portal** — deliberately blocked: the `patient` role matches no rows on `patients` and is not granted `visits`. Both routes now say so plainly instead of rendering an empty queue. Needs a narrow backend policy tying `auth.uid()` to a patient row
+- `apps/web` remaining: Vercel deploy verification (see §6), `useTenant()`, invite redemption route `/invite/[token]`
+- Invite **email delivery** — RPC returns a token; the admin UI shows a copyable link instead. Still deferred (see §7)
+- **Playwright E2E** — spec written (`docs/playwright-e2e-spec.md`). No longer structurally blocked. Still unimplemented
 - **Backup verification and a restore rehearsal** — the highest-priority remaining pilot task. See §6
 
 ---
@@ -300,18 +330,18 @@ Format: `[Date] Decision — Reason`
 
 | Feature | Contract status | Backend (Jeet) | Frontend (Prince) | Integrated? |
 |---|---|---|---|---|
-| Auth & Tenancy | **final** — `auth-tenancy.md` | **done & LIVE on hosted project** (128 local + 39 remote assertions passing) | login + onboarding built **on mock**, against guessed shapes — needs rework (no `pending`/`patient` role, wrong onboarding call, no invite flow) | **no** — `USE_MOCK` still on |
-| Patient Registration | **final** — `patient-registration.md` | done, tested | registration form built **on mock**; duplicate handled as a hard error instead of an overridable prompt | **no** |
-| OPD Queue | **final** — `opd-queue.md` | done, tested | queue list built **on mock** (`useQueue`, ready for Realtime); clinical notes not built | **no** |
-| Prescriptions | **final** — `prescriptions.md` | done, tested | simple authoring form built **on mock**; no safety check, no draft→issued lifecycle, no drug reference | **no** |
-| Billing | **final** — `billing.md` | done, tested | not started | **no** |
-| Vitals & Rounds | **final** — `vitals-and-rounds.md` | **done & LIVE** | not started | pending Prince |
-| Nurse Tasks & Med Administration | **final** — `nurse-tasks.md` | **done & LIVE** | not started | pending Prince |
-| IPD & Beds (Tier 2) | **final** — `ipd-beds.md` | **done & LIVE** | not started | pending Prince |
-| Lab Orders & Critical Values | **final** — `lab-orders.md` | **done & LIVE** | not started | pending Prince |
-| Admin Dashboard & Reconciliation | **final** — `admin-dashboard.md` | **done & LIVE** | not started | pending Prince |
-| User & Role Management | **final** — `user-management.md` | **done & LIVE** | not started | pending Prince — **and it needs the client-side forced sign-out in §4** |
-| Audit Log | **final** — `audit-log.md` | **done & LIVE** | not started | pending Prince |
+| Auth & Tenancy | **final** — `auth-tenancy.md` | **done & LIVE on hosted project** (128 local + 39 remote assertions passing) | login / signup / onboarding built to the real flow (`signUp` → trigger → `create_tenant_and_assign_admin`), two-channel `{ok, code}` envelope, 6-role model, invite **redemption** in onboarding | **no** — `USE_MOCK` still on |
+| Patient Registration | **final** — `patient-registration.md` | done, tested | built; phone optional, duplicate is an overridable prompt with the match list | **no** |
+| OPD Queue | **final** — `opd-queue.md` | done, tested | built: queue + status transitions + Realtime; **clinical notes built** at `/consult/[visitId]` | **no** |
+| Prescriptions | **final** — `prescriptions.md` | done, tested | built: draft→issued, drug autosuggest, safety check rendered by severity with a blocking interrupt on `high` | **no** |
+| Billing | **final** — `billing.md` | done, tested | built: pending charges, invoice (tax invoice vs bill of supply), payment | **no** |
+| Vitals & Rounds | **final** — `vitals-and-rounds.md` | **done & LIVE** | built: vitals entry (no required fields) + rounds with per-measurement ages | **no** |
+| Nurse Tasks & Med Administration | **final** — `nurse-tasks.md` | **done & LIVE** | task board built (claim/complete/cancel + Realtime). **Medication administration UI not built** | **no** |
+| IPD & Beds (Tier 2) | **final** — `ipd-beds.md` | **done & LIVE** | **not started** — but `/rounds` already displays inpatients | **no** |
+| Lab Orders & Critical Values | **final** — `lab-orders.md` | **done & LIVE** | **not started** | **no** |
+| Admin Dashboard & Reconciliation | **final** — `admin-dashboard.md` | **done & LIVE** | both built; reconciliation defaults to warning-and-above | **no** |
+| User & Role Management | **final** — `user-management.md` | **done & LIVE** | built, **including the forced sign-out from §4** — done in `proxy.ts` server-side rather than a client layout guard | **no** |
+| Audit Log | **final** — `audit-log.md` | **done & LIVE** | **not started** | **no** |
 | Tier 3 Placeholders | **final** — `tier3-placeholders.md` | **structure only, LIVE** | not started | no UI expected this phase |
 
 > **Naming note:** `prompts/prompt-phase4.md` refers to the lab contract as
@@ -326,11 +356,20 @@ Format: `[Date] Decision — Reason`
 
 *(Running list — add when discovered, remove when resolved with a note on how)*
 
-**Frontend (added when the frontend branch was merged)**
-- **The whole UI is unintegrated and its data layer contradicts the contracts.** `apps/web` was built during the window when no backend contract existed, so `lib/data/*` encodes guesses: 4 roles instead of 6 (no **`pending`**, which is the state *every* user is in immediately after signup — so the current onboarding flow cannot actually happen), a single `{data, error}` result instead of the real two-channel `{ok, code}` envelope, and an onboarding call that bundles signup with tenant creation. **None of this is a backend problem; it is rework on the frontend side** and it must land before `USE_MOCK` can be turned off. Full list in §4
-- **`lib/supabase/*.ts` is typed against a hand-written placeholder `Database`**, not `supabase/types/database.types.ts`. Swapping it is a one-line change but inherits the ⚠️ **stale types** caveat in §1 — the generated file predates Phase 4–6, so Phase 4–6 tables will be untyped until `npm run db:types` can run
-- **Hindi and Gujarati translations are developer-written, not reviewed by a native speaker.** Clinical and billing vocabulary (e.g. "reconciliation") is the risky part. Needs review before a pilot. Note also that **Gujarati was added as a third locale** — the PRD only commits to Hindi + English, so `gu.json` is scope the PRD does not yet describe
-- **No route guards exist.** `middleware.ts` was never written, so every role route is directly reachable by anyone with the URL. Harmless while the app is mock-only and undeployed; **must not be deployed in this state**
+**Frontend**
+- ⚠️ **BLOCKER — the real code path has never executed.** `apps/web/.env.local` holds the live project URL and publishable key, but **every seeded account returns "Invalid login credentials"**, so no signed-in path has been exercised. GoTrue does not distinguish a wrong password from a missing user, so from the client it is impossible to tell which. **Needs Jeet to confirm the seed is applied to `udjvbvtxrgrvpnmfvnbk` and supply the `SEED_USER_PASSWORD` he used** — ideally by re-running `db:seed:reset` with a fresh value, since the old one was printed into a terminal log on this machine. Until then `USE_MOCK` stays on.
+- **What the one real query did prove:** the URL and publishable key are valid, and `anon` is correctly refused on `tenants` and `profiles` with `42501` — a hard privilege denial rather than an empty result, which is stricter than the contract's wording.
+- **A real bug was found by that first query.** `getSessionUser` queried `profiles` unfiltered, assuming RLS narrows it to the caller's own row. It does not: an admin may read every profile in their tenant, so `.maybeSingle()` would have failed for **exactly the role with the most access**. Fixed. This is the argument for doing the integration checkpoint early rather than at the end.
+- ⚠️ **Two documented escape hatches exist for the stale types** (`rpcUntyped`, `untypedClient` in `lib/data/rpc.ts`). `admin_set_user_active` and all seven Phase 4 reporting views are absent from `database.types.ts`, so those call sites are **type-unverified against the real schema**. Both live in one file to delete once `npm run db:types` can run.
+- **Hindi and Gujarati translations are developer-written, not reviewed by a native speaker** — now covering 19 namespaces including clinical and GST vocabulary. Needs review before a pilot. Note **Gujarati is a third locale the PRD does not commit to** (it specifies Hindi + English), so `gu.json` is undescribed scope.
+- ⚠️ **Vercel deploy is unverified and needs Jeet.** The project is on his account and GitHub-connected. Three things to check before `main` receives this: **Root Directory must be `apps/web`** (his project predates the frontend existing, so it is probably pointing at the repo root where there is no Next app); the three `NEXT_PUBLIC_*` vars must be set, or the guards fail closed and the whole app becomes a redirect to `/login`; and **branch previews may have been serving the app unguarded** before `proxy.ts` landed — worth checking whether they are password-protected.
+- **Mock mode only works under `next dev`.** The guard bypass is gated on `NODE_ENV`, so a production build enforces auth regardless — and since the mock "session" is module state rather than a cookie, a deployed mock build just bounces to `/login`. Intended: mock data must never reach a clinic.
+- **The interrupt dialog on a high-severity drug interaction does not trap focus or scroll.** It is the one hard-interrupt surface in the app, so it deserves a proper focus trap before a pilot.
+- **Two mock inconsistencies to be aware of when reading screens:** the queue mock links visits to patient ids that the chart mock also defines, but ids are only loosely coordinated across `lib/data/*` modules; and reconciliation/dashboard mocks describe a Tier 2 ward while the billing mock describes a GST-registered Tier 1 clinic. Harmless for UI review, meaningless after integration.
+
+**Process notes worth keeping**
+- Adding a **new top-level i18n namespace requires restarting `next dev`** — Turbopack caches next-intl's dynamically imported message JSON, so new namespaces render as literal key paths (`tasks.title`) until a restart. Adding keys to an existing namespace hot-reloads fine.
+- Next 16 **deprecated the `middleware` convention in favour of `proxy`**; the build warns. The file is `apps/web/proxy.ts` exporting `proxy()`. Contracts still say "middleware" — same thing.
 
 **Blockers**
 - ~~Migrations not applied to the hosted project~~ — **RESOLVED 2026-08-11.** Jeet supplied `SUPABASE_DB_PASSWORD`; all Phase 1 migrations are pushed and `database.types.ts` is generated. Note the resolution was a **DB password, not an access token**: `supabase link` and the Management API still do not work on this machine, so pushes use `--db-url` against the `aws-0-ap-south-1` pooler
