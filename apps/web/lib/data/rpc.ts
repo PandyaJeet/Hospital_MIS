@@ -48,6 +48,34 @@ export function mapPostgrestError(error: TransportError): AppError {
   }
 }
 
+interface RpcCapable {
+  rpc: (
+    name: string,
+    params?: Record<string, unknown>,
+  ) => Promise<{ data: unknown; error: TransportError | null }>;
+}
+
+/**
+ * Call an RPC that exists in the database but not yet in the generated types.
+ *
+ * `supabase/types/database.types.ts` predates the Phase 4–6 migrations (Memory.md
+ * §1 — `supabase gen types` needs Docker, currently unavailable on the backend
+ * machine), so functions added in those phases are missing from the union of
+ * callable names and a normal `.rpc()` call fails to type-check.
+ *
+ * Keeping the escape hatch in one place means there is a single thing to delete
+ * once `npm run db:types` can be re-run, rather than casts scattered across
+ * feature modules.
+ */
+export async function rpcUntyped<T>(
+  client: unknown,
+  fn: string,
+  args: Record<string, unknown>,
+): Promise<Result<T>> {
+  const callable = client as RpcCapable;
+  return fromRpc<T>(await callable.rpc(fn, args));
+}
+
 /**
  * Collapse the two failure channels of a `supabase.rpc()` call into one
  * `Result`. Both must be handled — never assume success (rules.md §3.1):

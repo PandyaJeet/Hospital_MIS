@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState, type FormEvent } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, Ban } from "lucide-react";
 
 import { Button, Card, Input, Spinner } from "@/components/ui";
-import { signIn } from "@/lib/data/auth";
+import { signIn, signOut } from "@/lib/data/auth";
 import { roleHomePath } from "@/lib/roles";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -26,6 +26,16 @@ export default function LoginPage() {
   }>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  const searchParams = useSearchParams();
+  const deactivated = searchParams.get("reason") === "account_deactivated";
+
+  // The proxy redirects a deactivated user here. Clear the stale token so their
+  // still-valid JWT stops being presented on every request.
+  useEffect(() => {
+    if (!deactivated) return;
+    void signOut();
+  }, [deactivated]);
 
   function validate() {
     const next: { email?: string; password?: string } = {};
@@ -76,6 +86,16 @@ export default function LoginPage() {
     <Card className="w-full max-w-sm">
       <h1 className="text-xl font-semibold">{t("title")}</h1>
       <p className="mt-1 text-sm text-text-secondary">{t("subtitle")}</p>
+
+      {deactivated ? (
+        <div className="mt-4 flex items-start gap-2 rounded-lg border border-border bg-surface-muted p-3">
+          <Ban
+            className="mt-0.5 h-4 w-4 shrink-0 text-text-secondary"
+            aria-hidden="true"
+          />
+          <p className="text-sm text-text-primary">{t("deactivated")}</p>
+        </div>
+      ) : null}
 
       <form onSubmit={onSubmit} noValidate className="mt-6 flex flex-col gap-4">
         <Input

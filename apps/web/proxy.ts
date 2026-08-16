@@ -87,9 +87,21 @@ export async function proxy(request: NextRequest) {
   // profile in their tenant, so an unfiltered query returns more than one row.
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role")
+    .select("role, is_active")
     .eq("id", user.id)
     .maybeSingle();
+
+  // Deactivation revokes database access immediately but does NOT end the session:
+  // the JWT stays cryptographically valid until it expires (user-management.md §4).
+  // Without this the user would see every screen render empty and read it as data
+  // loss. Reading your own profile row is the one query that still works when
+  // deactivated, so this check cannot be starved by RLS.
+  if (profile?.is_active === false) {
+    if (isPublicPath(pathname)) return response;
+    const url = new URL("/login", request.url);
+    url.searchParams.set("reason", "account_deactivated");
+    return NextResponse.redirect(url);
+  }
 
   const role: Role = isRole(profile?.role ?? "") ? (profile!.role as Role) : "pending";
 
