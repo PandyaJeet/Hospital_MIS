@@ -1,9 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { AlertTriangle, BedDouble, Clock, Stethoscope } from "lucide-react";
 
+import { AdmitPanel } from "@/components/shared/admit-panel";
+import { DischargePanel } from "@/components/shared/discharge-panel";
 import { Badge, Button, Card, EmptyState, Skeleton } from "@/components/ui";
 import { useRounds } from "@/hooks/use-rounds";
 import type { RoundsRow } from "@/lib/data/rounds";
@@ -22,7 +25,21 @@ const SHORT: Record<MeasurementKey, string> = {
 
 export default function RoundsPage() {
   const t = useTranslations("rounds");
+  const tBeds = useTranslations("beds");
   const { rows, loading, error, refresh, fetchedAt } = useRounds();
+  /** Which row has a panel open, and which one. Only one at a time. */
+  const [openPanel, setOpenPanel] = useState<{
+    visitId: string;
+    kind: "bed" | "discharge";
+  } | null>(null);
+
+  function togglePanel(visitId: string, kind: "bed" | "discharge") {
+    setOpenPanel((current) =>
+      current?.visitId === visitId && current.kind === kind
+        ? null
+        : { visitId, kind },
+    );
+  }
 
   function ageLabel(iso: string | null) {
     if (!iso) return null;
@@ -213,7 +230,7 @@ export default function RoundsPage() {
                       {t("pendingTasks", { count: row.pending_tasks })}
                     </span>
                   ) : null}
-                  <div className="ml-auto flex items-center gap-3">
+                  <div className="ml-auto flex flex-wrap items-center gap-3">
                     <Link
                       href={`/patient/${row.patient_id}`}
                       className="text-sm text-text-secondary underline-offset-4 hover:underline"
@@ -226,8 +243,48 @@ export default function RoundsPage() {
                     >
                       {t("recordVitals")}
                     </Link>
+                    {/* Transfer and "assign a bed at last" are the same RPC, so one
+                        control covers both. Label follows whether they have a bed. */}
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => togglePanel(row.visit_id, "bed")}
+                    >
+                      {row.bed_id ? tBeds("transfer") : tBeds("assignBed")}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => togglePanel(row.visit_id, "discharge")}
+                    >
+                      {tBeds("discharge")}
+                    </Button>
                   </div>
                 </div>
+
+                {openPanel?.visitId === row.visit_id &&
+                openPanel.kind === "bed" ? (
+                  <AdmitPanel
+                    visitId={row.visit_id}
+                    onAdmitted={() => void refresh()}
+                    onClose={() => setOpenPanel(null)}
+                  />
+                ) : null}
+
+                {openPanel?.visitId === row.visit_id &&
+                openPanel.kind === "discharge" ? (
+                  <DischargePanel
+                    visitId={row.visit_id}
+                    bedLabel={
+                      row.ward_name && row.bed_number
+                        ? `${row.ward_name} ${row.bed_number}`
+                        : null
+                    }
+                    pendingTasks={row.pending_tasks}
+                    onDischarged={() => void refresh()}
+                    onClose={() => setOpenPanel(null)}
+                  />
+                ) : null}
               </Card>
             );
           })

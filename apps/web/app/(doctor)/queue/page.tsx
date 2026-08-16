@@ -1,11 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { AlertCircle, AlertTriangle, Inbox } from "lucide-react";
 
+import { AdmitPanel } from "@/components/shared/admit-panel";
+import { OrderLabPanel } from "@/components/shared/order-lab-panel";
 import {
   Badge,
   Button,
@@ -15,6 +17,7 @@ import {
   type BadgeProps,
 } from "@/components/ui";
 import { useQueue } from "@/hooks/use-queue";
+import { getSessionUser, type AuthUser } from "@/lib/data/auth";
 import {
   setVisitStatus,
   waitSeconds,
@@ -32,10 +35,40 @@ const statusTone: Record<VisitStatus, NonNullable<BadgeProps["tone"]>> = {
 export default function QueuePage() {
   const t = useTranslations("queue");
   const tNav = useTranslations("nav");
+  const tBeds = useTranslations("beds");
+  const tLabs = useTranslations("labs");
   const router = useRouter();
   const { entries, loading, error, refresh, fetchedAt } = useQueue();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [session, setSession] = useState<AuthUser | null>(null);
+  /** Which row has a panel open, and which one. Only one at a time. */
+  const [openPanel, setOpenPanel] = useState<{
+    visitId: string;
+    kind: "bed" | "lab";
+  } | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    void getSessionUser().then((result) => {
+      if (active && result.data) setSession(result.data);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  function togglePanel(visitId: string, kind: "bed" | "lab") {
+    setOpenPanel((current) =>
+      current?.visitId === visitId && current.kind === kind
+        ? null
+        : { visitId, kind },
+    );
+  }
+
+  // Ordering a test is a clinical decision — a nurse gets 42501 on the insert, so
+  // the control is not offered to them (lab-orders.md §2).
+  const canOrderLabs = session?.role === "doctor" || session?.role === "admin";
 
   function messageFor(code: string, from?: VisitStatus, to?: VisitStatus) {
     switch (code) {
@@ -222,6 +255,25 @@ export default function QueuePage() {
                         </Link>
                       </>
                     ) : null}
+                    {/* Admission is orthogonal to the consultation lifecycle —
+                        a patient can be admitted while still mid-consultation, so
+                        this is not gated on `status` (ipd-beds.md §1). */}
+                    {canOrderLabs ? (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => togglePanel(entry.id, "lab")}
+                      >
+                        {tLabs("orderTest")}
+                      </Button>
+                    ) : null}
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => togglePanel(entry.id, "bed")}
+                    >
+                      {tBeds("admit")}
+                    </Button>
                     <Button
                       size="sm"
                       variant={waiting ? "primary" : "secondary"}
@@ -240,6 +292,27 @@ export default function QueuePage() {
                       )}
                     </Button>
                   </div>
+
+                  {openPanel?.visitId === entry.id &&
+                  openPanel.kind === "bed" ? (
+                    <AdmitPanel
+                      visitId={entry.id}
+                      onAdmitted={() => void refresh()}
+                      onClose={() => setOpenPanel(null)}
+                    />
+                  ) : null}
+
+                  {openPanel?.visitId === entry.id &&
+                  openPanel.kind === "lab" &&
+                  session ? (
+                    <OrderLabPanel
+                      visitId={entry.id}
+                      patientId={entry.patient.id}
+                      tenantId={session.tenantId ?? "mock-tenant-1"}
+                      orderedBy={session.userId}
+                      onClose={() => setOpenPanel(null)}
+                    />
+                  ) : null}
                 </li>
               );
             })}

@@ -30,6 +30,9 @@ const roleRoutes: Record<Role, string[]> = {
     "/charges",
     "/invoice",
     "/reconciliation",
+    "/beds",
+    "/labs",
+    "/audit",
     ...STAFF_PATIENT_ACCESS,
   ],
   doctor: [
@@ -43,6 +46,11 @@ const roleRoutes: Record<Role, string[]> = {
     // no receptionist — the doctor is the front desk. Withholding this made
     // patient registration unreachable for the product's smallest customer.
     "/register",
+    // Beds are readable by every staff role and deliberately not tier-gated, so a
+    // downgraded clinic can still see a patient who is lying in a bed
+    // (ipd-beds.md §3).
+    "/beds",
+    "/labs",
     ...STAFF_PATIENT_ACCESS,
   ],
   // A nurse may read consultation notes but not author them — the screen itself
@@ -53,6 +61,10 @@ const roleRoutes: Record<Role, string[]> = {
     "/rounds",
     "/consult",
     "/register",
+    "/beds",
+    // A nurse records results and collects samples; there is no `lab_tech` role
+    // (lab-orders.md §6). Ordering is still refused at the insert.
+    "/labs",
     ...STAFF_PATIENT_ACCESS,
   ],
   billing: [
@@ -60,6 +72,11 @@ const roleRoutes: Record<Role, string[]> = {
     "/charges",
     "/invoice",
     "/reconciliation",
+    // Billing reads beds (a bed label is operational, and an inpatient bill has to
+    // name the bed) and lab *orders* (a chargeable service), but never lab
+    // *results* — the /labs screen shows them nothing clinical (lab-orders.md §2).
+    "/beds",
+    "/labs",
     ...STAFF_PATIENT_ACCESS,
   ],
   patient: ["/queue-status", "/reports"],
