@@ -1,3 +1,5 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
+
 import type { AppError, Result } from "./types";
 
 /**
@@ -53,6 +55,39 @@ interface RpcCapable {
     name: string,
     params?: Record<string, unknown>,
   ) => Promise<{ data: unknown; error: TransportError | null }>;
+}
+
+/**
+ * A permissive schema shape: any table or view name is callable and rows come back
+ * as plain records. Same reason as `rpcUntyped` — the generated types predate the
+ * Phase 4–6 migrations, so the Phase 4 reporting views are absent from them.
+ *
+ * Values must be narrowed by the caller, which is honest: nothing here is verified
+ * against the real schema until `npm run db:types` can be re-run.
+ */
+type PermissiveSchema = {
+  public: {
+    Tables: Record<
+      string,
+      {
+        Row: Record<string, unknown>;
+        Insert: Record<string, unknown>;
+        Update: Record<string, unknown>;
+        Relationships: [];
+      }
+    >;
+    Views: Record<string, { Row: Record<string, unknown>; Relationships: [] }>;
+    Functions: Record<
+      string,
+      { Args: Record<string, unknown>; Returns: unknown }
+    >;
+    Enums: Record<string, never>;
+    CompositeTypes: Record<string, never>;
+  };
+};
+
+export function untypedClient(client: unknown) {
+  return client as unknown as SupabaseClient<PermissiveSchema>;
 }
 
 /**
