@@ -21,6 +21,7 @@ const roleRoutes: Record<Role, string[]> = {
     "/users",
     "/settings",
     "/queue",
+    "/consult",
     "/prescribe",
     "/rounds",
     "/tasks",
@@ -33,13 +34,16 @@ const roleRoutes: Record<Role, string[]> = {
   ],
   doctor: [
     "/queue",
+    "/consult",
     "/prescribe",
     "/rounds",
     "/tasks",
     "/vitals",
     ...STAFF_PATIENT_ACCESS,
   ],
-  nurse: ["/tasks", "/vitals", "/rounds", ...STAFF_PATIENT_ACCESS],
+  // A nurse may read consultation notes but not author them — the screen itself
+  // enforces that; billing is excluded from /consult entirely.
+  nurse: ["/tasks", "/vitals", "/rounds", "/consult", ...STAFF_PATIENT_ACCESS],
   billing: [
     "/register",
     "/charges",

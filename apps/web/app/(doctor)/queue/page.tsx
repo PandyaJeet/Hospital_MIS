@@ -207,12 +207,20 @@ export default function QueuePage() {
 
                   <div className="mt-3 flex items-center justify-end gap-3">
                     {!waiting ? (
-                      <Link
-                        href={`/prescribe/${entry.id}`}
-                        className="text-sm font-medium text-accent underline-offset-4 hover:underline"
-                      >
-                        {tNav("prescribe")}
-                      </Link>
+                      <>
+                        <Link
+                          href={`/consult/${entry.id}`}
+                          className="text-sm font-medium text-accent underline-offset-4 hover:underline"
+                        >
+                          {t("consultAction")}
+                        </Link>
+                        <Link
+                          href={`/prescribe/${entry.id}`}
+                          className="text-sm font-medium text-accent underline-offset-4 hover:underline"
+                        >
+                          {tNav("prescribe")}
+                        </Link>
+                      </>
                     ) : null}
                     <Button
                       size="sm"
