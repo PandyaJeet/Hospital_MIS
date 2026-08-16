@@ -506,6 +506,11 @@
     "loadError": "Couldn't load the dashboard. Please try again.",
     "retry": "Retry"
   },
+  "invite": {
+    "title": "You've been invited",
+    "checking": "Just a moment…",
+    "needAccount": "Create your account first — we'll bring your invite along."
+  },
   "portal": {
     "queueTitle": "Queue status isn't available yet",
     "reportsTitle": "Reports aren't available yet",

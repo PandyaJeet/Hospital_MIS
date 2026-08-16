@@ -159,7 +159,7 @@ export default function UsersPage() {
 
   function inviteLink(token: string) {
     if (typeof window === "undefined") return "";
-    return `${window.location.origin}/onboarding?token=${token}`;
+    return `${window.location.origin}/invite/${token}`;
   }
 
   return (
@@ -373,6 +373,8 @@ export default function UsersPage() {
                 <code className="min-w-0 flex-1 truncate rounded bg-surface px-2 py-1 text-xs text-text-primary">
                   {inviteLink(created.token)}
                 </code>
+                {/* Points at /invite/[token], which parks the token so it survives
+                    the confirm-email round trip. */}
                 <Button
                   size="sm"
                   variant="secondary"

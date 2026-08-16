@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { AlertCircle, Building2, Ticket } from "lucide-react";
 
 import { Button, Card, Input, Spinner } from "@/components/ui";
+import { clearInviteToken } from "@/lib/auth/invite";
 import { acceptInvite, createTenant, signOut } from "@/lib/data/auth";
 import { roleHomePath } from "@/lib/roles";
 
@@ -21,8 +22,13 @@ export default function OnboardingPage() {
   const te = useTranslations("auth.errors");
   const router = useRouter();
 
+  // Prefilled from the URL, which the proxy populates from the parked invite
+  // cookie. Read via the hook rather than an effect so render stays pure.
+  const searchParams = useSearchParams();
+  const invitedToken = searchParams.get("token") ?? "";
+
   const [clinicName, setClinicName] = useState("");
-  const [token, setToken] = useState("");
+  const [token, setToken] = useState(invitedToken);
   const [clinicError, setClinicError] = useState<string | undefined>();
   const [tokenError, setTokenError] = useState<string | undefined>();
   const [formError, setFormError] = useState<string | null>(null);
@@ -99,7 +105,11 @@ export default function OnboardingPage() {
       }
       return;
     }
-    if (data) router.push(roleHomePath[data.role]);
+    if (data) {
+      // Spent, so drop the parked copy rather than leaving a dead token around.
+      await clearInviteToken();
+      router.push(roleHomePath[data.role]);
+    }
   }
 
   async function onSignOut() {

@@ -54,8 +54,11 @@ const roleRoutes: Record<Role, string[]> = {
   patient: ["/queue-status", "/reports"],
 };
 
-/** Reachable without a session. */
-export const PUBLIC_PATHS = ["/login", "/signup"];
+/**
+ * Reachable without a session. `/invite` has to be public: an invitee arrives from
+ * an emailed link before they have an account at all.
+ */
+export const PUBLIC_PATHS = ["/login", "/signup", "/invite"];
 
 export function isPublicPath(pathname: string) {
   return PUBLIC_PATHS.some(

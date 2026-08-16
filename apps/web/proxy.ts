@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
+import { INVITE_COOKIE } from "@/lib/auth/invite-cookie";
 import { canAccess, homeFor, isPublicPath } from "@/lib/auth/route-access";
 import { isRole, type Role } from "@/lib/roles";
 
@@ -113,7 +114,12 @@ export async function proxy(request: NextRequest) {
   // `pending` is a normal state, not an error, so never redirect-loop it.
   if (role === "pending") {
     if (pathname === "/onboarding") return response;
-    return NextResponse.redirect(new URL("/onboarding", request.url));
+    const onboarding = new URL("/onboarding", request.url);
+    // Hand back a parked invite token so someone returning from the confirm-email
+    // round trip doesn't have to re-paste it (see lib/auth/invite.ts).
+    const parked = request.cookies.get(INVITE_COOKIE)?.value;
+    if (parked) onboarding.searchParams.set("token", parked);
+    return NextResponse.redirect(onboarding);
   }
 
   // Onboarded users have no business back on onboarding.
