@@ -282,18 +282,26 @@ const MOCK_SUMMARY: DashboardSummary = {
   total_patients: 412,
 };
 
-// Tier 1 clinic: no ward configured, so occupancy_pct is NULL rather than 0.
+/**
+ * A Tier 2 nursing home, kept consistent with the rounds mock.
+ *
+ * Note `current_inpatients` (3) exceeds `occupied` (2): one patient is admitted
+ * without a bed yet, which is legitimate rather than an inconsistency.
+ *
+ * Set `total_beds` to 0 to see the no-ward path, where `occupancy_pct` is NULL and
+ * the dashboard renders "no beds configured" rather than a misleading 0%.
+ */
 const MOCK_OCCUPANCY: OccupancySnapshot = {
-  total_beds: 0,
-  occupied: 0,
-  available: 0,
-  cleaning: 0,
+  total_beds: 6,
+  occupied: 2,
+  available: 3,
+  cleaning: 1,
   maintenance: 0,
-  occupancy_pct: null,
-  current_inpatients: 0,
-  admitted_without_bed: 0,
-  admissions_today: 0,
-  discharges_today: 0,
+  occupancy_pct: 33,
+  current_inpatients: 3,
+  admitted_without_bed: 1,
+  admissions_today: 2,
+  discharges_today: 1,
 };
 
 const MOCK_STAFF: StaffActivityDay[] = [
