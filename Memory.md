@@ -15,7 +15,7 @@
 | Field | Value |
 |---|---|
 | Project | Hospital MIS for Indian clinics/hospitals |
-| Current phase | **Backend: Phases 1–6 COMPLETE and live.** **Frontend: 19 surfaces built against the real contracts (Phases 1–4 and 6), route guards, sign-out, and integration checkpoint 1 PASSED 22/22** against the hosted project — `USE_MOCK` is **false**. The IPD, lab and audit surfaces closed the last three "backend exists, no UI" gaps; their tables/views/columns and the Tier 2 gate are confirmed live, but no screen has been driven in a browser yet. Phase 1's Definition of Done is close but not signed off: it also requires two-tenant isolation confirmed **through the UI** and the admin invite/role flow exercised end to end, neither of which has been clicked through. **Phase 6 is not in `phases.md`** — that file plans Phase 0–5 only. Backup posture still **unverified and a pilot blocker** (§6) |
+| Current phase | **Backend: Phases 1–6 COMPLETE and live.** **Frontend: 20 surfaces built against the real contracts (Phases 1–4 and 6), route guards, sign-out, and integration checkpoint 1 PASSED 22/22** against the hosted project — `USE_MOCK` is **false**. **Every documented backend capability now has a screen**; medication administration was the last one. Tables, views and the Tier 2 gate are confirmed live for the new surfaces, but **no new screen has been driven in a browser** — that is the whole of what remains. Phase 1's Definition of Done is close but not signed off: it also requires two-tenant isolation confirmed **through the UI** and the admin invite/role flow exercised end to end, neither of which has been clicked through. **Phase 6 is not in `phases.md`** — that file plans Phase 0–5 only. Backup posture still **unverified and a pilot blocker** (§6) |
 | Stack | Next.js 16 (App Router) + Tailwind v4 + Supabase (Postgres, Auth, Storage; `@supabase/ssr`) + Vercel; i18n via next-intl (en / hi / gu) |
 | Repo layout | Single repo. Backend tooling + `supabase/` at root (root `package.json` is backend-only); the Next.js app is self-contained in `apps/web` with its own `package.json`. Frontend history merged from `prince/phase-0-frontend` |
 | Architecture model | Cloud-hosted, single Supabase project, multi-tenant via `tenant_id` + RLS |
@@ -30,7 +30,7 @@
 | ⚠️ Types stale | `supabase/types/database.types.ts` does **NOT** include Phase 4, 5 or 6. `supabase gen types` runs in a Docker container and Docker Desktop's WSL integration is still down. **Run `npm run db:types` once Docker is back** — no code change needed |
 | ⚠️ Backups | **Plan tier / PITR state is UNKNOWN** — needs a `SUPABASE_ACCESS_TOKEN` nobody has here. WAL archiving is verified live and healthy (`archive_mode=on`, 99 segments, 0 failures), but retention is a platform-side question. **Confirm in the dashboard before any real patient data.** `docs/backup-and-restore.md` |
 | Frontend branch | `prince/phase-0-frontend` — merged with `main`'s backend history, **not yet merged back into `main`**. Vercel is on Jeet's account and GitHub-connected, so see the deploy caveats in §6 before merging |
-| Last updated | 2026-08-08 — IPD/beds, lab orders + critical alerts, and the audit log viewer built (`4a255f7`); sign-out added and the per-role nav dead ends fixed (`00abc2c`). The app had no way to sign out and most staff could not reach `/register` at all. §1, §4 and §5 updated: the three "not started" frontend modules are done, and the schema-level checkpoint for them is recorded under In Progress |
+| Last updated | 2026-08-08 — medication administration + `cancel_prescription()` built (`5a3c714`), closing the last backend capability with no UI; IPD/beds, labs + critical alerts and the audit viewer before it (`4a255f7`); sign-out and the per-role nav dead ends (`00abc2c`). §1, §4 and §5 updated. The remaining frontend work is verification, not construction — every new surface is schema-verified but unclicked |
 
 ---
 
@@ -306,6 +306,8 @@ Every feature module is dual-mode: the real Supabase path is written, `NEXT_PUBL
 | Clinic settings (GST posture) | `/settings` | `billing.md` §2 |
 | Admin dashboard | `/dashboard` | `admin-dashboard.md` |
 | Billing reconciliation | `/reconciliation` | `admin-dashboard.md` §8 |
+| Medication administration (wristband check) | `/administer/[visitId]` | `nurse-tasks.md` §6–7 |
+| Retracting an issued prescription | `/prescribe/[visitId]` | `prescriptions.md` §12 |
 | Ward board, bed inventory, ward pricing | `/beds` | `ipd-beds.md` |
 | Admit / transfer / discharge | queue + rounds row actions | `ipd-beds.md` §4–6, §12 |
 | Lab orders, result entry, critical alerts | `/labs`, queue row action | `lab-orders.md` |
@@ -313,6 +315,13 @@ Every feature module is dual-mode: the real Supabase path is written, `NEXT_PUBL
 | Sign-out and account switching | app shell account menu | `auth-tenancy.md` |
 
 Contract nuances deliberately honoured (each was a way to get it wrong): duplicate phone is an overridable prompt, not a wall; no field blocks a clinical note or a vitals save; prescription safety renders **by severity** with a blocking interrupt only on `high`, and a failed check never reads as safe; tax is per line and a non-GST clinic gets a bill of supply with no tax section; a ₹0 charge means "price unknown", not free; rounds shows each measurement's own age because values come from different moments; occupancy shows "no beds" rather than 0%; staff activity is never called utilization; users cannot be deleted, only deactivated.
+
+Added with medication administration, same category:
+- **The three scan failures are three different messages.** `PATIENT_MISMATCH` interrupts with a modal and **names neither patient**; `PATIENT_CODE_UNRECOGNISED` asks for a re-scan and says explicitly that it is *not* a pass; `SCAN_REQUIRED` blocks the action. Collapsing them into "couldn't save" would hide the one error class the mechanism exists to catch
+- **`patient_verified` is stated on success, never assumed** — a silent success is indistinguishable from a check that never ran
+- **A repeat dose is an overridable prompt showing the previous time**, and it says the patient check passed. `frequency` is free text (`'TDS'`), so one item legitimately means several doses a day
+- **`refused` and `held` are first-class outcomes**, not failures to record
+- Only *issued* prescriptions are listed — a draft was never authorised, a cancelled one is an instruction not to administer
 
 Added with the IPD/lab/audit surfaces, same category of "a way to get it wrong":
 - **A lab result's `is_critical: false` is never rendered as reassuring on its own.** `alertLevel()` in `lib/data/labs.ts` collapses `is_critical` + `requires_manual_review` into `critical | unevaluated | normal`, and every surface branches on that. A test with no thresholds on file returns `false` because nothing was compared, and the UI says so, with the reason (`critical_check_status`)
@@ -330,10 +339,12 @@ Added with the IPD/lab/audit surfaces, same category of "a way to get it wrong":
 - **Frontend integration — unblocked and started.** Checkpoint 1 passed at the query level (§6). What remains is clicking each screen through with a real session, which is what actually closes the Workflow.md §4 checkpoints per feature
 - **Integration checkpoint 2 (IPD / labs / audit) — schema level passed, UI level not yet.** Every table, view and column the new screens read was confirmed to exist and be readable on `udjvbvtxrgrvpnmfvnbk` with a real admin session: `beds`, `wards`, `bed_stays`, `ipd_accrual_current`, `lab_orders`, `critical_lab_alerts`, `audit_log`, `lab_critical_ranges`, plus `current_tenant_tier()`. The tier gate was verified live in both directions — **Sunrise is Tier 1** and `admit_patient_to_bed` returns `TIER_NOT_ENABLED` with `required_tier: 2, current_tier: 1` *before any lookup* (so bed ids cannot be probed), while **Lotus is Tier 2** and passes the gate through to `VISIT_NOT_FOUND`. What has **not** been done is driving these screens in a browser and writing through them
 - Consequence worth knowing when testing: **the ward board is empty for Sunrise by design** — it is Tier 1 and has no beds. Sign in as `b.admin@hmis-seed.example.com` (Lotus, Tier 2) to see a real board and to admit anyone
+- **Medication administration + prescription cancellation — schema level passed.** `medication_administrations` is nurse-readable; `record_medication_administration()` returns `SCAN_REQUIRED` for an empty code **before** the item is looked up (so the scan gate cannot be skipped by guessing item ids); `cancel_prescription()` refuses a nurse with `NOT_CLINICAL_STAFF`. Not yet done: recording a real dose end to end, which needs an issued prescription on a live visit
+- **A caught documentation-vs-guess error worth remembering:** the cancel path was first written against an invented `NOT_PRESCRIBER_OR_ADMIN`. `prescriptions.md` §12.4 lists only four codes, and `NOT_PRESCRIBER` on the cancel path means "a colleague's prescription, an admin may" — the opposite advice to the same code when issuing. Read the error table; do not infer codes from prose
 
 ### Not Started
 - **Frontend ↔ backend integration for every feature.** No Workflow.md §4 checkpoint has completed. One real bug was already found the first time a real query ran (§6)
-- **Medication administration UI** — the one clinical module with a backend and no screen. `nurse-tasks.md` covers the task board, which is built; recording that a dose was *given* is not
+- **Every documented backend capability now has a screen.** What is left is not "build the UI" but "prove the UI"; see In Progress
 - **Patient portal** — deliberately blocked: the `patient` role matches no rows on `patients` and is not granted `visits`. Both routes now say so plainly instead of rendering an empty queue. Needs a narrow backend policy tying `auth.uid()` to a patient row
 - `apps/web` remaining: Vercel deploy verification (see §6), `useTenant()`, invite redemption route `/invite/[token]`
 - Invite **email delivery** — RPC returns a token; the admin UI shows a copyable link instead. Still deferred (see §7)
@@ -349,10 +360,10 @@ Added with the IPD/lab/audit surfaces, same category of "a way to get it wrong":
 | Auth & Tenancy | **final** — `auth-tenancy.md` | **done & LIVE on hosted project** (128 local + 39 remote assertions passing) | login / signup / onboarding built to the real flow, two-channel `{ok, code}` envelope, 6-role model, `/invite/[token]` redemption that survives the confirm-email round trip | **partly** — sign-in, profile lookup and the RPC envelope verified against the real project; the invite and role flows not yet clicked through |
 | Patient Registration | **final** — `patient-registration.md` | done, tested | built; phone optional, duplicate is an overridable prompt with the match list | **no** |
 | OPD Queue | **final** — `opd-queue.md` | done, tested | built: queue + status transitions + Realtime; **clinical notes built** at `/consult/[visitId]` | **no** |
-| Prescriptions | **final** — `prescriptions.md` | done, tested | built: draft→issued, drug autosuggest, safety check rendered by severity with a blocking interrupt on `high` | **no** |
+| Prescriptions | **final** — `prescriptions.md` | done, tested | built: draft→issued, drug autosuggest, safety check rendered by severity with a blocking interrupt on `high`, **plus §12 `cancel_prescription()`** (prescriber or admin, reason optional, reports withdrawn vs already-invoiced charges) | **partly** — cancel refusal for a nurse confirmed live (`NOT_CLINICAL_STAFF`) |
 | Billing | **final** — `billing.md` | done, tested | built: pending charges, invoice (tax invoice vs bill of supply), payment | **no** |
 | Vitals & Rounds | **final** — `vitals-and-rounds.md` | **done & LIVE** | built: vitals entry (no required fields) + rounds with per-measurement ages | **no** |
-| Nurse Tasks & Med Administration | **final** — `nurse-tasks.md` | **done & LIVE** | task board built (claim/complete/cancel + Realtime). **Medication administration UI not built — now the only clinical module with a backend and no screen** | **no** |
+| Nurse Tasks & Med Administration | **final** — `nurse-tasks.md` | **done & LIVE** | both built: task board (claim/complete/cancel + Realtime), and `/administer/[visitId]` — given/refused/held, wristband check, the three scan failures rendered three different ways, repeat dose as an overridable prompt | **partly** — `medication_administrations` confirmed nurse-readable and `SCAN_REQUIRED` confirmed to fire before item lookup; no dose recorded through the UI |
 | IPD & Beds (Tier 2) | **final** — `ipd-beds.md` | **done & LIVE** | built: `/beds` ward board + inventory + ward pricing; admit/transfer/discharge from queue and rounds; Tier 1 gets an upgrade message | **schema level only** — tables, views and the Tier 2 gate verified live in both directions; nothing written through the UI |
 | Lab Orders & Critical Values | **final** — `lab-orders.md` | **done & LIVE** | built: `/labs` orders + status transitions + result entry with a live criticality check; ordering from the queue; alert list with acknowledgement. Renders `critical` / `unevaluated` / `normal` as three distinct states | **schema level only** — `lab_orders`, `critical_lab_alerts` and `lab_critical_ranges` confirmed readable; no result recorded through the UI |
 | Admin Dashboard & Reconciliation | **final** — `admin-dashboard.md` | **done & LIVE** | both built; reconciliation defaults to warning-and-above | **no** |
