@@ -228,8 +228,21 @@
     "empty": "Add at least one medicine before issuing.",
     "alreadyIssued": "This prescription has already been issued.",
     "notPrescriber": "Only the prescribing doctor can issue this.",
+    "cancelNotPrescriber": "This is another doctor's prescription. An admin can cancel it.",
+    "cancelNotClinicalStaff": "Only a doctor or an admin can cancel a prescription.",
     "notFound": "That prescription could not be found.",
     "editingLocked": "Issued prescriptions cannot be edited.",
+    "cancelPrescription": "Cancel this prescription",
+    "confirmCancelTitle": "Cancel this prescription?",
+    "confirmCancelBody": "It stops being administrable straight away — the nurse's screen will refuse the dose. Medicine charges not yet invoiced are removed.",
+    "cancelReason": "Reason (optional)",
+    "cancelReasonHelp": "Recorded with the cancellation, e.g. allergy noticed after issue.",
+    "confirmCancelAction": "Cancel prescription",
+    "keepPrescription": "Keep it",
+    "cancelledTitle": "Prescription cancelled",
+    "cancelledBody": "It can no longer be administered.",
+    "chargesWithdrawn": "{count} pending medicine charge removed.",
+    "chargesInvoiced": "{count} charge is already on an issued invoice and was left alone — raise a credit note.",
     "genericError": "Something went wrong. Please try again.",
     "networkError": "No internet connection — please check your network.",
     "permissionError": "You don't have permission to do that."
@@ -765,5 +778,61 @@
     "loadError": "Couldn't load the audit log. Please try again.",
     "retry": "Retry",
     "scopeNote": "This build logs access, invites and clinic settings. Clinical and billing changes aren't logged yet."
+  },
+  "administer": {
+    "title": "Give medicines",
+    "subtitle": "Scan the wristband, then record each dose.",
+    "giveMeds": "Give medicines",
+    "scanLabel": "Patient wristband",
+    "scanHelp": "Scan the band, or type the UHID. 12, UHID-12 and P/12 all work.",
+    "scanPrivacyNote": "Only how the code resolved is recorded, never the scanned code itself.",
+    "scanFirst": "Scan the wristband to enable recording.",
+    "medicinesTitle": "Issued medicines",
+    "empty": "Nothing to give",
+    "emptyBody": "Only issued prescriptions appear here. A draft was never authorised, and a cancelled one must not be given.",
+    "loadError": "Couldn't load the medicine list. Please try again.",
+    "retry": "Retry",
+    "noDoseRecorded": "No dose recorded on the prescription",
+    "thisMedicine": "this medicine",
+    "notesLabel": "Note (optional)",
+    "notesHelp": "Applies to the next dose you record. Useful for a refusal or a hold.",
+    "action": {
+      "given": "Given",
+      "refused": "Refused",
+      "held": "Held"
+    },
+    "status": {
+      "given": "Given",
+      "refused": "Refused",
+      "held": "Held"
+    },
+    "recorded": {
+      "given": "{drug} recorded as given.",
+      "refused": "{drug} recorded as refused.",
+      "held": "{drug} recorded as held."
+    },
+    "patientVerified": "Right patient confirmed against the scan.",
+    "basis": {
+      "patient_id": "matched by band code",
+      "patient_number": "matched by UHID"
+    },
+    "notVerified": "The patient was not verified, so nothing was recorded.",
+    "mismatchTitle": "Wrong patient — stop",
+    "mismatchBody": "That wristband belongs to a different patient. Check you're at the right bedside before doing anything else.",
+    "mismatchNothingRecorded": "Nothing was recorded. The other patient's details aren't shown on purpose — the next step is to stop, not to look them up.",
+    "mismatchAcknowledge": "I've stopped and will re-scan",
+    "unrecognisedTitle": "That code didn't match any patient here",
+    "unrecognisedBody": "Re-scan, or verify the patient by hand. A smudged band and a band from another clinic look the same to the scanner.",
+    "scanRequiredTitle": "Scan the wristband first",
+    "scanRequiredBody": "A dose can't be recorded without a patient check.",
+    "notIssuedTitle": "This prescription hasn't been issued, so the drug was never authorised.",
+    "cancelledTitle": "This prescription was cancelled. Do not administer.",
+    "repeatTitle": "This dose is already logged",
+    "repeatBody": "Record it again only if this is a genuine subsequent dose.",
+    "repeatBodyWithTime": "Last given {time}. Record again only if this is a genuine subsequent dose.",
+    "repeatStillVerified": "The patient check passed — this is about the dose, not the patient.",
+    "repeatConfirm": "Yes, record another dose",
+    "cancel": "Cancel",
+    "appendOnlyNote": "This log can't be edited or undone yet. Record a hold or a refusal rather than leaving a dose unlogged."
   }
 }

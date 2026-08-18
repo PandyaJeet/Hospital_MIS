@@ -18,9 +18,11 @@ import { getSessionUser, type AuthUser } from "@/lib/data/auth";
 import {
   addItem,
   checkSafety,
+  cancelPrescription,
   createDraft,
   getDraftForVisit,
   issuePrescription,
+  type CancelPayload,
   removeItem,
   searchDrugs,
   visitPatient,
@@ -45,7 +47,7 @@ export default function PrescribeVisitPage() {
   const [rx, setRx] = useState<Prescription | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<
-    "start" | "add" | "check" | "issue" | "remove" | null
+    "start" | "add" | "check" | "issue" | "remove" | "cancel" | null
   >(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -61,6 +63,9 @@ export default function PrescribeVisitPage() {
   const [acknowledged, setAcknowledged] = useState(false);
   const [showInterrupt, setShowInterrupt] = useState(false);
   const [issuedCount, setIssuedCount] = useState<number | null>(null);
+  const [confirmingCancel, setConfirmingCancel] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
+  const [cancelled, setCancelled] = useState<CancelPayload | null>(null);
 
   const patient = visitPatient(visitId);
 
@@ -233,6 +238,30 @@ export default function PrescribeVisitPage() {
     await reload();
   }
 
+  async function onCancel() {
+    if (!rx) return;
+    setActionError(null);
+    setBusy("cancel");
+    const { data, error } = await cancelPrescription(rx.id, cancelReason);
+    setBusy(null);
+    if (error) {
+      // Cancelling has its own copy for two shared codes (prescriptions.md §12.4).
+      // `NOT_PRESCRIBER` here means "a colleague's prescription — an admin may",
+      // which is the opposite advice to the same code on the issue path.
+      setActionError(
+        error.code === "NOT_PRESCRIBER"
+          ? t("cancelNotPrescriber")
+          : error.code === "NOT_CLINICAL_STAFF"
+            ? t("cancelNotClinicalStaff")
+            : messageFor(error.code),
+      );
+      return;
+    }
+    setCancelled(data);
+    setConfirmingCancel(false);
+    await reload();
+  }
+
   if (loading) {
     return (
       <div className="mx-auto w-full max-w-2xl px-6 py-8">
@@ -354,9 +383,88 @@ export default function PrescribeVisitPage() {
           </Card>
 
           {isIssued ? (
-            <p className="mt-4 text-sm text-text-secondary">
-              {t("editingLocked")}
-            </p>
+            <>
+              <p className="mt-4 text-sm text-text-secondary">
+                {t("editingLocked")}
+              </p>
+
+              {/*
+                An issued prescription cannot be edited, but it can be retracted
+                (prescriptions.md §12). Without this, a doctor who issued the wrong
+                drug had no way to stop it being administered — and the nurse's
+                screen relies on `cancelled` to refuse the dose.
+              */}
+              {cancelled ? (
+                <div className="mt-4 rounded-lg border border-border bg-surface-muted p-4">
+                  <p className="font-medium text-text-primary">
+                    {t("cancelledTitle")}
+                  </p>
+                  <p className="mt-1 text-sm text-text-secondary">
+                    {t("cancelledBody")}
+                  </p>
+                  {cancelled.charges_withdrawn > 0 ? (
+                    <p className="mt-1 text-sm text-text-secondary">
+                      {t("chargesWithdrawn", {
+                        count: cancelled.charges_withdrawn,
+                      })}
+                    </p>
+                  ) : null}
+                  {/* An issued tax document is never silently rewritten. */}
+                  {cancelled.charges_invoiced > 0 ? (
+                    <p className="mt-1 text-sm text-warning">
+                      {t("chargesInvoiced", {
+                        count: cancelled.charges_invoiced,
+                      })}
+                    </p>
+                  ) : null}
+                </div>
+              ) : confirmingCancel ? (
+                <div className="mt-4 rounded-lg border border-warning bg-warning/5 p-4">
+                  <p className="font-medium text-text-primary">
+                    {t("confirmCancelTitle")}
+                  </p>
+                  <p className="mt-1 text-sm text-text-secondary">
+                    {t("confirmCancelBody")}
+                  </p>
+                  <div className="mt-3">
+                    <Input
+                      label={t("cancelReason")}
+                      value={cancelReason}
+                      onChange={(e) => setCancelReason(e.target.value)}
+                      helperText={t("cancelReasonHelp")}
+                    />
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      disabled={busy === "cancel"}
+                      onClick={() => void onCancel()}
+                    >
+                      {busy === "cancel" ? <Spinner /> : null}
+                      {t("confirmCancelAction")}
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => setConfirmingCancel(false)}
+                    >
+                      {t("keepPrescription")}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-4">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setConfirmingCancel(true)}
+                  >
+                    {t("cancelPrescription")}
+                  </Button>
+                </div>
+              )}
+            </>
           ) : (
             <Card className="mt-4">
               <div className="flex flex-col gap-3">

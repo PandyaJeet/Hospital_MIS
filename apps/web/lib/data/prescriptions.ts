@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/client";
 
 import { USE_MOCK } from "./mock";
-import { fromRpc, mapPostgrestError } from "./rpc";
+import { fromRpc, mapPostgrestError, rpcUntyped } from "./rpc";
 import type { Result } from "./types";
 
 /**
@@ -92,6 +92,20 @@ export interface IssuePayload {
   prescription_id: string;
   status: "issued";
   item_count: number;
+}
+
+/** `cancel_prescription()` — Phase 6 addition, `prescriptions.md` §12. */
+export interface CancelPayload {
+  prescription_id: string;
+  status: "cancelled";
+  /** False when it was already cancelled — an idempotent no-op success. */
+  changed: boolean;
+  was_issued: boolean;
+  /** Pending medicine lines deleted: the patient is not billed for undispensed drugs. */
+  charges_withdrawn: number;
+  /** Lines already on an issued invoice, left untouched. Needs a credit note. */
+  charges_invoiced: number;
+  reason: string | null;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -209,6 +223,21 @@ async function realIssue(
       p_prescription_id: prescriptionId,
     }),
   );
+}
+
+/**
+ * `cancel_prescription` is a Phase 6 function and `database.types.ts` predates it, so
+ * this goes through the untyped escape hatch rather than the typed `rpc()`. Revisit
+ * once `npm run db:types` has been re-run (Memory.md §1).
+ */
+async function realCancel(
+  prescriptionId: string,
+  reason: string | null,
+): Promise<Result<CancelPayload>> {
+  return rpcUntyped<CancelPayload>(createClient(), "cancel_prescription", {
+    p_prescription_id: prescriptionId,
+    p_reason: reason,
+  });
 }
 
 /* -------------------------------------------------------------------------- */
@@ -629,6 +658,58 @@ export async function issuePrescription(
       prescription_id: stored.id,
       status: "issued",
       item_count: stored.items.length,
+    },
+    error: null,
+  };
+}
+
+/**
+ * Retract an issued prescription (`prescriptions.md` §12).
+ *
+ * Permitted to **the prescriber or any admin**, which is deliberately wider than who
+ * may issue: an un-retracted wrong prescription is a drug that may still be
+ * administered, and "wait for the prescriber" is not an answer on a ward at 2am.
+ * Stopping is safer to over-permit than starting.
+ *
+ * A nurse cannot cancel, but is already protected —
+ * `record_medication_administration()` refuses a cancelled item.
+ *
+ * Cancelling twice is an idempotent no-op success (`changed: false`), so a
+ * double-tapped button is harmless.
+ */
+export async function cancelPrescription(
+  prescriptionId: string,
+  reason: string | null = null,
+): Promise<Result<CancelPayload>> {
+  if (!USE_MOCK) return realCancel(prescriptionId, reason?.trim() || null);
+
+  await delay(300);
+  const stored = [...mockStore.values()].find((p) => p.id === prescriptionId);
+  if (!stored) {
+    return {
+      data: null,
+      error: {
+        code: "PRESCRIPTION_NOT_FOUND",
+        message: "That prescription could not be found.",
+      },
+    };
+  }
+
+  const wasIssued = stored.status === "issued";
+  const alreadyCancelled = stored.status === "cancelled";
+  stored.status = "cancelled";
+
+  return {
+    data: {
+      prescription_id: stored.id,
+      status: "cancelled",
+      changed: !alreadyCancelled,
+      was_issued: wasIssued,
+      // Issuing fires the medicine billing trigger, so by the time a script can be
+      // cancelled the charges usually exist. Pending ones go; invoiced ones do not.
+      charges_withdrawn: wasIssued ? stored.items.length : 0,
+      charges_invoiced: 0,
+      reason: reason?.trim() || null,
     },
     error: null,
   };

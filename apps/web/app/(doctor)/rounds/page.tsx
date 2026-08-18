@@ -26,6 +26,7 @@ const SHORT: Record<MeasurementKey, string> = {
 export default function RoundsPage() {
   const t = useTranslations("rounds");
   const tBeds = useTranslations("beds");
+  const tMeds = useTranslations("administer");
   const { rows, loading, error, refresh, fetchedAt } = useRounds();
   /** Which row has a panel open, and which one. Only one at a time. */
   const [openPanel, setOpenPanel] = useState<{
@@ -242,6 +243,12 @@ export default function RoundsPage() {
                       className="text-sm font-medium text-accent underline-offset-4 hover:underline"
                     >
                       {t("recordVitals")}
+                    </Link>
+                    <Link
+                      href={`/administer/${row.visit_id}`}
+                      className="text-sm font-medium text-accent underline-offset-4 hover:underline"
+                    >
+                      {tMeds("giveMeds")}
                     </Link>
                     {/* Transfer and "assign a bed at last" are the same RPC, so one
                         control covers both. Label follows whether they have a bed. */}

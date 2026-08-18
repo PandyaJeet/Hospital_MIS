@@ -33,6 +33,7 @@ const roleRoutes: Record<Role, string[]> = {
     "/beds",
     "/labs",
     "/audit",
+    "/administer",
     ...STAFF_PATIENT_ACCESS,
   ],
   doctor: [
@@ -46,6 +47,9 @@ const roleRoutes: Record<Role, string[]> = {
     // no receptionist — the doctor is the front desk. Withholding this made
     // patient registration unreachable for the product's smallest customer.
     "/register",
+    // A doctor may record an administration too — `record_medication_administration`
+    // accepts any clinical role, and in a solo practice there is no nurse.
+    "/administer",
     // Beds are readable by every staff role and deliberately not tier-gated, so a
     // downgraded clinic can still see a patient who is lying in a bed
     // (ipd-beds.md §3).
@@ -65,6 +69,9 @@ const roleRoutes: Record<Role, string[]> = {
     // A nurse records results and collects samples; there is no `lab_tech` role
     // (lab-orders.md §6). Ordering is still refused at the insert.
     "/labs",
+    // Giving a dose is the nurse's core job. The right-patient check is enforced by
+    // the RPC, not by this list (nurse-tasks.md §6–7).
+    "/administer",
     ...STAFF_PATIENT_ACCESS,
   ],
   billing: [

@@ -21,6 +21,7 @@ import {
  */
 export default function TasksPage() {
   const t = useTranslations("tasks");
+  const tMeds = useTranslations("administer");
   const { tasks, loading, error, refresh, fetchedAt } = useTasks();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [busyKind, setBusyKind] = useState<"complete" | "cancel" | "claim" | null>(
@@ -164,6 +165,22 @@ export default function TasksPage() {
                       className="text-sm font-medium text-accent underline-offset-4 hover:underline"
                     >
                       {t("recordVitals")}
+                    </Link>
+                  ) : null}
+
+                  {/*
+                    Unlike vitals, administering does NOT auto-close this card:
+                    administrations are logged against a prescription *item* and
+                    `tasks` has no `prescription_item_id` (nurse-tasks.md §5, §9).
+                    So the nurse still ticks it, and the label says so rather than
+                    implying the card will clear itself.
+                  */}
+                  {task.task_type === "medication_due" ? (
+                    <Link
+                      href={`/administer/${task.visit_id}`}
+                      className="text-sm font-medium text-accent underline-offset-4 hover:underline"
+                    >
+                      {tMeds("giveMeds")}
                     </Link>
                   ) : null}
 
