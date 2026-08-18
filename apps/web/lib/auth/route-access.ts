@@ -34,6 +34,7 @@ const roleRoutes: Record<Role, string[]> = {
     "/labs",
     "/audit",
     "/administer",
+    "/patients",
     ...STAFF_PATIENT_ACCESS,
   ],
   doctor: [
@@ -47,6 +48,7 @@ const roleRoutes: Record<Role, string[]> = {
     // no receptionist — the doctor is the front desk. Withholding this made
     // patient registration unreachable for the product's smallest customer.
     "/register",
+    "/patients",
     // A doctor may record an administration too — `record_medication_administration`
     // accepts any clinical role, and in a solo practice there is no nurse.
     "/administer",
@@ -65,6 +67,7 @@ const roleRoutes: Record<Role, string[]> = {
     "/rounds",
     "/consult",
     "/register",
+    "/patients",
     "/beds",
     // A nurse records results and collects samples; there is no `lab_tech` role
     // (lab-orders.md §6). Ordering is still refused at the insert.
@@ -76,6 +79,7 @@ const roleRoutes: Record<Role, string[]> = {
   ],
   billing: [
     "/register",
+    "/patients",
     "/charges",
     "/invoice",
     "/reconciliation",

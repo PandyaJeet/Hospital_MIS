@@ -834,5 +834,28 @@
     "repeatConfirm": "Yes, record another dose",
     "cancel": "Cancel",
     "appendOnlyNote": "This log can't be edited or undone yet. Record a hold or a refusal rather than leaving a dose unlogged."
+  },
+  "checkIn": {
+    "action": "Check in",
+    "checkingIn": "Checking in…",
+    "token": "Token {number}",
+    "inQueue": "They're in today's queue and visible to the doctor now.",
+    "notStaff": "Only clinic staff can check a patient in.",
+    "notFound": "That patient isn't registered at this clinic."
+  },
+  "patients": {
+    "title": "Find a patient",
+    "subtitle": "Search by UHID, phone number or name, then check them in.",
+    "searchLabel": "UHID, phone or name",
+    "searchHelp": "A number is treated as a UHID, ten or more digits as a phone number, anything else as the start of a name.",
+    "search": "Search",
+    "promptTitle": "Search for a patient",
+    "promptBody": "Type a UHID, a phone number, or the start of a name.",
+    "noResults": "No patient found",
+    "noResultsBody": "Nothing at this clinic matches that. Check the spelling, or register them as new.",
+    "registerCta": "Register patient",
+    "uhid": "UHID {number}",
+    "years": "{age} yrs",
+    "loadError": "Couldn't run that search. Please try again."
   }
 }

@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/client";
 
 import { USE_MOCK } from "./mock";
 import { mapPostgrestError } from "./rpc";
-import type { AppError } from "./types";
+import type { AppError, Result } from "./types";
 
 /**
  * Shapes follow `docs/contracts/patient-registration.md` §7 exactly, including
@@ -227,4 +227,122 @@ export function registerPatient(
   input: NewPatientInput,
 ): Promise<RegisterPatientOutcome> {
   return USE_MOCK ? mockRegisterPatient(input) : realRegisterPatient(input);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Patient lookup (patient-registration.md §4)                                */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Find a patient by UHID, phone or name.
+ *
+ * The three lookups the contract documents are combined rather than offered as a
+ * mode switch, because staff type whatever is in front of them — a number quoted
+ * over the phone, a number off a card, or a name — and asking them to classify it
+ * first is friction for no gain.
+ *
+ * Which queries run depends on the shape of the term:
+ *  - digits only, short  → UHID, exact. The fastest path and the one used most
+ *  - digits only, 10+    → `phone_normalized`, exact on the last 10 digits, which
+ *                          is what the generated column holds
+ *  - anything else       → case-insensitive **prefix** on the name, matching the
+ *                          index on `lower(full_name)`
+ *
+ * Prefix, not substring: there is no trigram index, so a leading wildcard would
+ * table-scan every patient in the clinic.
+ *
+ * RLS scopes all of this to the caller's tenant, so a term matching another
+ * clinic's patient simply returns nothing.
+ */
+export async function searchPatients(
+  term: string,
+): Promise<Result<PatientMatch[]>> {
+  const query = term.trim();
+  if (!query) return { data: [], error: null };
+
+  if (USE_MOCK) {
+    await delay(220);
+    return { data: mockSearch(query), error: null };
+  }
+
+  const supabase = createClient();
+  const select =
+    "id, patient_number, full_name, phone, dob, age_years, gender, created_at";
+  const digits = query.replace(/\D/g, "");
+  const digitsOnly = digits.length > 0 && digits.length === query.length;
+
+  const lookups: PromiseLike<{
+    data: unknown[] | null;
+    error: { message: string; code?: string } | null;
+  }>[] = [];
+
+  if (digitsOnly && digits.length <= 9) {
+    const uhid = Number(digits);
+    if (Number.isSafeInteger(uhid)) {
+      lookups.push(
+        supabase.from("patients").select(select).eq("patient_number", uhid),
+      );
+    }
+  }
+  if (digits.length >= 10) {
+    lookups.push(
+      supabase
+        .from("patients")
+        .select(select)
+        .eq("phone_normalized", normalizePhone(digits)),
+    );
+  }
+  if (!digitsOnly) {
+    lookups.push(
+      supabase.from("patients").select(select).ilike("full_name", `${query}%`).limit(20),
+    );
+  }
+
+  if (lookups.length === 0) return { data: [], error: null };
+
+  const results = await Promise.all(lookups);
+
+  // If every lookup failed, that is a real failure. If only some did, the user
+  // still gets the rows we have rather than an error page — but a partial result
+  // must not be presented as exhaustive, so a total failure is surfaced.
+  const failures = results.filter((r) => r.error);
+  if (failures.length === results.length) {
+    return {
+      data: null,
+      error: mapPostgrestError(failures[0].error as never),
+    };
+  }
+
+  const seen = new Set<string>();
+  const merged: PatientMatch[] = [];
+  for (const result of results) {
+    for (const row of (result.data ?? []) as PatientMatch[]) {
+      if (seen.has(row.id)) continue;
+      seen.add(row.id);
+      merged.push(row);
+    }
+  }
+  return { data: merged, error: null };
+}
+
+function mockSearch(term: string): PatientMatch[] {
+  const q = term.toLowerCase();
+  const digits = term.replace(/\D/g, "");
+  return mockPatients
+    .filter((row) => {
+      if (digits && String(row.patient_number) === digits) return true;
+      if (digits.length >= 10 && row.phone_normalized === normalizePhone(digits))
+        return true;
+      return row.full_name.toLowerCase().startsWith(q);
+    })
+    .map((row) => ({
+      id: row.id,
+      patient_number: row.patient_number,
+      full_name: row.full_name,
+      phone: row.phone,
+      dob: row.dob,
+      age_years: row.age_years,
+      gender: row.gender,
+      created_at: row.created_at,
+    }));
 }

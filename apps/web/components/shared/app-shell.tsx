@@ -2,7 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Activity, Menu, Search, X } from "lucide-react";
 
@@ -74,7 +74,9 @@ export function AppShell({
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
   const t = useTranslations("common");
+  const router = useRouter();
 
   return (
     <div className="flex flex-1">
@@ -120,7 +122,18 @@ export function AppShell({
             <Menu className="h-5 w-5" aria-hidden="true" />
           </button>
 
-          <div className="relative hidden max-w-md flex-1 sm:block">
+          {/* Submits to /patients so a search is linkable and survives a refresh.
+              This was a decorative input until now — it had no handler at all. */}
+          <form
+            role="search"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const query = search.trim();
+              if (!query) return;
+              router.push(`/patients?q=${encodeURIComponent(query)}`);
+            }}
+            className="relative hidden max-w-md flex-1 sm:block"
+          >
             <Search
               className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-disabled"
               aria-hidden="true"
@@ -129,9 +142,11 @@ export function AppShell({
               type="search"
               aria-label={t("search")}
               placeholder={t("search")}
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
               className="h-9 w-full rounded-md border border-border bg-background pl-9 pr-3 text-sm text-text-primary placeholder:text-text-disabled focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             />
-          </div>
+          </form>
 
           <div className="ml-auto flex items-center gap-2">
             <LanguageSwitcher />

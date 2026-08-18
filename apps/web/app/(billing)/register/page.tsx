@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { AlertCircle, CheckCircle2, Users } from "lucide-react";
 
+import { CheckInButton } from "@/components/shared/check-in-button";
 import { Button, Card, Input, Spinner, Textarea } from "@/components/ui";
 import {
   genders,
@@ -44,6 +45,7 @@ export default function RegisterPage() {
   const [submitting, setSubmitting] = useState(false);
   const [duplicate, setDuplicate] = useState<PatientMatch[] | null>(null);
   const [success, setSuccess] = useState<{
+    id: string;
     name: string;
     number: number;
   } | null>(null);
@@ -106,6 +108,7 @@ export default function RegisterPage() {
     switch (outcome.kind) {
       case "registered":
         setSuccess({
+          id: outcome.patient_id,
           name: outcome.full_name,
           number: outcome.patient_number,
         });
@@ -162,6 +165,14 @@ export default function RegisterPage() {
                 number: success.number,
               })}
             </p>
+            {/*
+              Registering does not queue anyone. Without this the patient exists
+              and then goes nowhere — the doctor's queue stays empty and the walk-in
+              has to be found again by search to be checked in.
+            */}
+            <div className="mt-3">
+              <CheckInButton patientId={success.id} size="sm" />
+            </div>
           </div>
         </div>
       ) : null}
