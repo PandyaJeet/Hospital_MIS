@@ -5,7 +5,9 @@ import { useCallback, useEffect, useState } from "react";
 import {
   getCurrentTier,
   listBeds,
+  listIpdAccrual,
   listWards,
+  type AccrualRow,
   type Bed,
   type Ward,
 } from "@/lib/data/beds";
@@ -17,12 +19,16 @@ interface BoardSnapshot {
   beds: Result<Bed[]>;
   wards: Result<Ward[]>;
   tier: Result<number | null>;
+  accrual: Result<AccrualRow[]>;
 }
 
 function fetchBoard(): Promise<BoardSnapshot> {
-  return Promise.all([listBeds(), listWards(), getCurrentTier()]).then(
-    ([beds, wards, tier]) => ({ beds, wards, tier }),
-  );
+  return Promise.all([
+    listBeds(),
+    listWards(),
+    getCurrentTier(),
+    listIpdAccrual(),
+  ]).then(([beds, wards, tier, accrual]) => ({ beds, wards, tier, accrual }));
 }
 
 /**
@@ -41,6 +47,7 @@ export function useBeds() {
   const [beds, setBeds] = useState<Bed[]>([]);
   const [wards, setWards] = useState<Ward[]>([]);
   const [tier, setTier] = useState<number | null>(null);
+  const [accrual, setAccrual] = useState<AccrualRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<AppError | null>(null);
 
@@ -55,6 +62,9 @@ export function useBeds() {
     }
     setWards(snapshot.wards.data ?? []);
     setTier(snapshot.tier.data ?? null);
+    // A projection, not a ledger — reading it charges nothing. Empty is the normal
+    // answer for an OPD-only clinic and for a role RLS scopes out.
+    setAccrual(snapshot.accrual.data ?? []);
     setLoading(false);
   }, []);
 
@@ -94,5 +104,5 @@ export function useBeds() {
   /** A null tier means "not in a clinic", which is not Tier 1 (ipd-beds.md §3). */
   const ipdEnabled = tier !== null && tier >= 2;
 
-  return { beds, wards, tier, ipdEnabled, loading, error, refresh };
+  return { beds, wards, tier, accrual, ipdEnabled, loading, error, refresh };
 }

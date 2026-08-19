@@ -44,7 +44,8 @@ const HOUSEKEEPING: HousekeepingStatus[] = [
 
 export default function BedsPage() {
   const t = useTranslations("beds");
-  const { beds, wards, tier, ipdEnabled, loading, error, refresh } = useBeds();
+  const { beds, wards, tier, accrual, ipdEnabled, loading, error, refresh } =
+    useBeds();
 
   const [session, setSession] = useState<AuthUser | null>(null);
   const [busyBedId, setBusyBedId] = useState<string | null>(null);
@@ -68,6 +69,8 @@ export default function BedsPage() {
   // set_bed_status is nursing or admin only — turning a bed over is ward work,
   // not front-desk work (ipd-beds.md §5).
   const canTurnOver = session?.role === "admin" || session?.role === "nurse";
+  // Accrued room rent is money, so it is shown to the roles that answer for it.
+  const canSeeMoney = session?.role === "admin" || session?.role === "billing";
 
   async function changeStatus(bed: Bed, status: HousekeepingStatus) {
     setBusyBedId(bed.id);
@@ -235,6 +238,46 @@ export default function BedsPage() {
                     void priceWard(ward.id, rate, critical)
                   }
                 />
+              </li>
+            ))}
+          </ul>
+        </Card>
+      ) : null}
+
+      {/*
+        Room rent accruing right now, for the roles that answer for money. A
+        projection rather than a ledger — nothing here has been charged yet, which is
+        why it says "so far" and is not presented as a bill (ipd-beds.md §12).
+      */}
+      {canSeeMoney && accrual.length > 0 ? (
+        <Card className="mt-6">
+          <h2 className="font-medium">{t("accrualTitle")}</h2>
+          <p className="mt-1 text-sm text-text-secondary">
+            {t("accrualSubtitle")}
+          </p>
+          <ul className="mt-3 flex flex-col gap-2">
+            {accrual.map((row) => (
+              <li
+                key={row.bed_stay_id}
+                className="flex flex-wrap items-baseline justify-between gap-2 border-t border-border pt-2"
+              >
+                <span className="text-sm text-text-primary">
+                  {t("uhid", { number: row.patient_number })}
+                  {" · "}
+                  {row.ward_name} {row.bed_number}
+                  {row.is_critical_care ? ` · ${t("criticalCare")}` : ""}
+                </span>
+                <span className="text-sm tabular-nums text-text-secondary">
+                  {t("accrualDays", { count: row.days_so_far })}
+                  {" · "}
+                  {row.ward_unpriced ? (
+                    // An unpriced ward accrues ₹0. Saying "₹0" alone would read as
+                    // a free stay rather than a missing rate.
+                    <span className="text-warning">{t("accrualUnpriced")}</span>
+                  ) : (
+                    t("accrualAmount", { amount: row.accrued_amount })
+                  )}
+                </span>
               </li>
             ))}
           </ul>
