@@ -1,12 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { TicketCheck, TriangleAlert } from "lucide-react";
 
 import { Button, Spinner } from "@/components/ui";
-import { checkInPatient, type CheckInPayload, type VisitType } from "@/lib/data/queue";
-import type { AppError } from "@/lib/data/types";
+import { checkInPatient, type CheckInOutcome, type VisitType } from "@/lib/data/queue";
 
 /**
  * Put a registered patient into today's OPD queue.
@@ -15,9 +15,12 @@ import type { AppError } from "@/lib/data/types";
  * Phase 2 and nothing in the UI called it, so a patient could be registered and
  * then never reach the doctor's queue.
  *
- * Checking the same patient in twice is not an error — the RPC returns the
- * existing visit and its token (`opd-queue.md`), so a second press shows the
- * number they already have rather than issuing a second one.
+ * ⚠️ Check-in is **not** idempotent, deliberately. A second open visit for the
+ * same patient on the same day is refused, because two tokens become two
+ * consultations become two consultation charges (opd-queue.md §3). So
+ * `VISIT_ALREADY_OPEN` is treated as an answer rather than an error: it carries the
+ * existing token, and this shows that number instead of the dead end the contract
+ * warns about.
  */
 export function CheckInButton({
   patientId,
@@ -30,41 +33,53 @@ export function CheckInButton({
   visitType?: VisitType;
   size?: "sm" | "md";
   variant?: "primary" | "secondary";
-  onCheckedIn?: (payload: CheckInPayload) => void;
+  onCheckedIn?: (outcome: CheckInOutcome) => void;
 }) {
   const t = useTranslations("checkIn");
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<CheckInPayload | null>(null);
-  const [error, setError] = useState<AppError | null>(null);
+  const [outcome, setOutcome] = useState<CheckInOutcome | null>(null);
 
   async function run() {
     setBusy(true);
-    setError(null);
-    const { data, error: failure } = await checkInPatient(patientId, visitType);
+    const result = await checkInPatient(patientId, visitType);
     setBusy(false);
-    if (failure) {
-      setError(failure);
-      return;
-    }
-    if (data) {
-      setResult(data);
-      onCheckedIn?.(data);
-    }
+    setOutcome(result);
+    if (result.kind !== "failed") onCheckedIn?.(result);
   }
 
-  if (result) {
+  if (outcome && outcome.kind !== "failed") {
+    const fresh = outcome.kind === "checked_in";
     return (
-      <div className="rounded-md border border-success bg-success/5 p-3">
+      <div
+        className={
+          fresh
+            ? "rounded-md border border-success bg-success/5 p-3"
+            : "rounded-md border border-border bg-surface-muted p-3"
+        }
+      >
         <p className="flex items-start gap-2 text-sm font-medium text-text-primary">
           <TicketCheck
-            className="mt-0.5 h-4 w-4 shrink-0 text-success"
+            className={
+              fresh
+                ? "mt-0.5 h-4 w-4 shrink-0 text-success"
+                : "mt-0.5 h-4 w-4 shrink-0 text-text-secondary"
+            }
             aria-hidden="true"
           />
-          {t("token", { number: result.queue_number })}
+          {t("token", { number: outcome.queue_number })}
         </p>
         <p className="mt-1 pl-6 text-sm text-text-secondary">
-          {t("inQueue")}
+          {fresh ? t("inQueue") : t("alreadyInQueue")}
         </p>
+        {/* Point at the existing visit rather than leaving them stranded. */}
+        {!fresh ? (
+          <Link
+            href="/queue"
+            className="mt-1 inline-block pl-6 text-sm font-medium text-accent underline-offset-4 hover:underline"
+          >
+            {t("openQueue")}
+          </Link>
+        ) : null}
       </div>
     );
   }
@@ -80,7 +95,7 @@ export function CheckInButton({
         {busy ? <Spinner /> : null}
         {busy ? t("checkingIn") : t("action")}
       </Button>
-      {error ? (
+      {outcome?.kind === "failed" ? (
         <p
           role="alert"
           className="flex items-start gap-1.5 text-sm text-text-primary"
@@ -90,11 +105,11 @@ export function CheckInButton({
             aria-hidden="true"
           />
           <span>
-            {error.code === "NOT_STAFF"
+            {outcome.error.code === "NOT_STAFF"
               ? t("notStaff")
-              : error.code === "PATIENT_NOT_FOUND"
+              : outcome.error.code === "PATIENT_NOT_FOUND"
                 ? t("notFound")
-                : error.message}
+                : outcome.error.message}
           </span>
         </p>
       ) : null}

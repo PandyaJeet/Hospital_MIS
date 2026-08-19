@@ -753,17 +753,23 @@
     "filterLabel": "ક્રિયા વડે ગાળો",
     "allActions": "બધી ક્રિયાઓ",
     "action": {
-      "user.role_changed": "ભૂમિકા બદલી",
-      "user.deactivated": "પહોંચ હટાવી",
-      "user.reactivated": "પહોંચ પુનઃ આપી",
-      "user.joined_tenant": "ક્લિનિકમાં જોડાયા",
-      "user.tenant_changed": "ક્લિનિક બદલ્યું",
-      "invite.created": "આમંત્રણ મોકલ્યું",
-      "invite.accepted": "આમંત્રણ સ્વીકાર્યું",
-      "invite.reissued": "આમંત્રણ ફરી મોકલ્યું",
-      "invite.revoked": "આમંત્રણ રદ કર્યું",
-      "tenant.created": "ક્લિનિક બનાવ્યું",
-      "tenant.settings_changed": "સેટિંગ્સ બદલી"
+      "user": {
+        "role_changed": "ભૂમિકા બદલી",
+        "deactivated": "પહોંચ હટાવી",
+        "reactivated": "પહોંચ પુનઃ આપી",
+        "joined_tenant": "ક્લિનિકમાં જોડાયા",
+        "tenant_changed": "ક્લિનિક બદલ્યું"
+      },
+      "invite": {
+        "created": "આમંત્રણ મોકલ્યું",
+        "accepted": "આમંત્રણ સ્વીકાર્યું",
+        "reissued": "આમંત્રણ ફરી મોકલ્યું",
+        "revoked": "આમંત્રણ રદ કર્યું"
+      },
+      "tenant": {
+        "created": "ક્લિનિક બનાવ્યું",
+        "settings_changed": "સેટિંગ્સ બદલી"
+      }
     },
     "bySystem": "પ્લેટફોર્મ દ્વારા",
     "byRole": "{role} દ્વારા",
@@ -840,6 +846,8 @@
     "checkingIn": "ચેક-ઇન થઈ રહ્યું છે…",
     "token": "ટોકન {number}",
     "inQueue": "તેઓ આજની કતારમાં છે અને ડૉક્ટરને હમણાં દેખાય છે.",
+    "alreadyInQueue": "તેઓ આ જ ટોકન સાથે આજની કતારમાં પહેલેથી હતા. બીજું ટોકન અપાતું નથી, તેથી તેમની પાસેથી બે વાર ચાર્જ લઈ શકાય નહીં.",
+    "openQueue": "કતાર ખોલો",
     "notStaff": "દર્દીનું ચેક-ઇન ફક્ત ક્લિનિક સ્ટાફ કરી શકે.",
     "notFound": "આ દર્દી આ ક્લિનિકમાં નોંધાયેલ નથી."
   },

@@ -753,17 +753,23 @@
     "filterLabel": "Filter by action",
     "allActions": "All actions",
     "action": {
-      "user.role_changed": "Role changed",
-      "user.deactivated": "Access removed",
-      "user.reactivated": "Access restored",
-      "user.joined_tenant": "Joined the clinic",
-      "user.tenant_changed": "Moved clinic",
-      "invite.created": "Invite sent",
-      "invite.accepted": "Invite accepted",
-      "invite.reissued": "Invite reissued",
-      "invite.revoked": "Invite revoked",
-      "tenant.created": "Clinic created",
-      "tenant.settings_changed": "Settings changed"
+      "user": {
+        "role_changed": "Role changed",
+        "deactivated": "Access removed",
+        "reactivated": "Access restored",
+        "joined_tenant": "Joined the clinic",
+        "tenant_changed": "Moved clinic"
+      },
+      "invite": {
+        "created": "Invite sent",
+        "accepted": "Invite accepted",
+        "reissued": "Invite reissued",
+        "revoked": "Invite revoked"
+      },
+      "tenant": {
+        "created": "Clinic created",
+        "settings_changed": "Settings changed"
+      }
     },
     "bySystem": "By the platform",
     "byRole": "By a {role}",
@@ -840,6 +846,8 @@
     "checkingIn": "Checking in…",
     "token": "Token {number}",
     "inQueue": "They're in today's queue and visible to the doctor now.",
+    "alreadyInQueue": "They were already in today's queue with this token. A second one isn't issued, so they can't be charged twice.",
+    "openQueue": "Open the queue",
     "notStaff": "Only clinic staff can check a patient in.",
     "notFound": "That patient isn't registered at this clinic."
   },

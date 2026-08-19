@@ -753,17 +753,23 @@
     "filterLabel": "क्रिया से छानें",
     "allActions": "सभी क्रियाएँ",
     "action": {
-      "user.role_changed": "भूमिका बदली",
-      "user.deactivated": "पहुँच हटाई",
-      "user.reactivated": "पहुँच बहाल की",
-      "user.joined_tenant": "क्लिनिक में शामिल हुए",
-      "user.tenant_changed": "क्लिनिक बदला",
-      "invite.created": "आमंत्रण भेजा",
-      "invite.accepted": "आमंत्रण स्वीकारा",
-      "invite.reissued": "आमंत्रण फिर भेजा",
-      "invite.revoked": "आमंत्रण रद्द किया",
-      "tenant.created": "क्लिनिक बनाया",
-      "tenant.settings_changed": "सेटिंग्स बदलीं"
+      "user": {
+        "role_changed": "भूमिका बदली",
+        "deactivated": "पहुँच हटाई",
+        "reactivated": "पहुँच बहाल की",
+        "joined_tenant": "क्लिनिक में शामिल हुए",
+        "tenant_changed": "क्लिनिक बदला"
+      },
+      "invite": {
+        "created": "आमंत्रण भेजा",
+        "accepted": "आमंत्रण स्वीकारा",
+        "reissued": "आमंत्रण फिर भेजा",
+        "revoked": "आमंत्रण रद्द किया"
+      },
+      "tenant": {
+        "created": "क्लिनिक बनाया",
+        "settings_changed": "सेटिंग्स बदलीं"
+      }
     },
     "bySystem": "प्लेटफ़ॉर्म द्वारा",
     "byRole": "{role} द्वारा",
@@ -840,6 +846,8 @@
     "checkingIn": "चेक-इन हो रहा है…",
     "token": "टोकन {number}",
     "inQueue": "वे आज की क़तार में हैं और डॉक्टर को अभी दिख रहे हैं।",
+    "alreadyInQueue": "वे इसी टोकन के साथ आज की क़तार में पहले से थे। दूसरा टोकन नहीं दिया जाता, इसलिए उनसे दो बार शुल्क नहीं लिया जा सकता।",
+    "openQueue": "क़तार खोलें",
     "notStaff": "मरीज़ का चेक-इन केवल क्लिनिक स्टाफ़ कर सकता है।",
     "notFound": "यह मरीज़ इस क्लिनिक में पंजीकृत नहीं है।"
   },

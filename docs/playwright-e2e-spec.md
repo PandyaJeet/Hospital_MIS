@@ -1,14 +1,60 @@
 # Playwright E2E Specification
 
-**Status: BLOCKED — not implemented, deliberately.**
+**Status: PARTIALLY IMPLEMENTED — §2, §4 and §5 are green.**
 
-Playwright drives a browser. There is no browser target: `apps/web` does not exist in this
+`apps/web` now exists and is merged to `main`, so the block described below is gone. The
+suite lives at `apps/web/e2e/`, runs with `npm run test:e2e` from `apps/web`, and covers the
+three sections the priority list calls highest-value:
+
+| Section | File | State |
+|---|---|---|
+| §1 auth | `auth.setup.ts` | **partial** — sign-in only, cached as `storageState` per role. The signup/invite/expiry scenarios are not written |
+| §2 OPD journey | `opd-journey.spec.ts` | **green**, 5 tests |
+| §4 role-based UI | `rbac.spec.ts` | **green**, 11 tests incl. tier gating |
+| §5 tenant isolation | `tenant-isolation.spec.ts` | **green**, 3 tests |
+| §3, §6, §7, §8, §9 | — | not written |
+
+**25 tests, all passing, 2.6 minutes** — inside the 10-minute budget in the definition of
+done below.
+
+⚠️ **§6 (deactivation) is deliberately not implemented.** It requires deactivating a real
+user, and there is still only one Supabase project — the environment requirement below asks
+for a dedicated one. Running it against the shared dev project would break the seeded doctor
+for everyone. §3 needs a forced RPC failure, which is easier once there is a project that can
+be reset freely.
+
+Because the project is shared, every record the suite creates is prefixed `E2E ` so the noise
+is identifiable, and nothing destructive is attempted.
+
+### What it found on first run
+
+Worth recording, because it is the argument for the suite existing at all. Three real defects,
+none of which any backend test could have caught:
+
+1. **`check_in_patient()` was never called by any screen.** A patient could be registered and
+   then go nowhere — the doctor's queue stayed empty because nothing in the UI could put
+   anyone in it. Fixed before the tests could pass.
+2. **There was no patient search.** The header box was an input with no handler and the data
+   layer had no search function, so a returning patient could not be found.
+3. **Every audit-log action label rendered as a raw key** (`audit.action.user.role_changed`).
+   next-intl treats `.` as a namespace separator, so flat dotted message keys never resolve.
+   The messages are now nested to match. This was throwing on every page render and nobody
+   had noticed.
+
+The first two were also a wrong assumption in the frontend: check-in was documented as
+*refusing* a second same-day visit, and had been implemented as though it were idempotent.
+
+---
+
+## Original blocking note, kept for context
+
+Playwright drives a browser. There was no browser target: `apps/web` did not exist in this
 repo, and it is Prince's track. Building even a minimal page for Playwright to click through
-would mean writing frontend code from the backend track, which is out of scope and would
-create exactly the kind of parallel structure `rules.md` §5.1 exists to prevent.
+would have meant writing frontend code from the backend track, which is out of scope and
+would create exactly the kind of parallel structure `rules.md` §5.1 exists to prevent.
 
-So this file is a **specification and a checklist**, not an implementation. It contains no
-test code. When `apps/web` lands, this is the list to work through.
+So this file was a **specification and a checklist**. The checklist below is still the list to
+work through; the boxes are unticked because they are the scenarios, not the tests that exist.
 
 ---
 

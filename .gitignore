@@ -48,3 +48,17 @@ Thumbs.db
 # ---------------------------------------------------------------------------
 coverage/
 *.tsbuildinfo
+
+# Playwright. `e2e/.auth/` holds cached storageState — real, live access and
+# refresh tokens for the seeded accounts. Treat it exactly like a secret
+# (rules.md §1.4): committing it would publish working sessions.
+#
+# ⚠️ The `**/` prefixes are load-bearing. A pattern containing a slash is anchored
+# to this file's directory, so plain `e2e/.auth/` would only match `<root>/e2e/`
+# and would NOT match `apps/web/e2e/.auth/` — which is exactly where the tokens
+# are. `git add --dry-run` confirmed it was about to stage six live sessions.
+**/e2e/.auth/
+**/playwright/.cache/
+test-results/
+playwright-report/
+blob-report/

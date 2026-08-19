@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/client";
 
 import { USE_MOCK } from "./mock";
 import { fromRpc, mapPostgrestError } from "./rpc";
-import type { Result } from "./types";
+import type { AppError, Result } from "./types";
 
 /**
  * Shapes follow `docs/contracts/opd-queue.md` §8 exactly.
@@ -104,19 +104,95 @@ export interface CheckInPayload {
   status: VisitStatus;
 }
 
+/**
+ * Three states, not two — the same shape `registerPatient` uses, for the same
+ * reason.
+ *
+ * `check_in_patient()` **refuses a second open visit for the same patient on the
+ * same day** (opd-queue.md §3). That is not a safety net against clumsiness, it is
+ * billing correctness: two tokens become two consultations become two consultation
+ * charges.
+ *
+ * So `VISIT_ALREADY_OPEN` is not a failure to report — it is an answer. The RPC
+ * returns the existing `visit_id`, `queue_number` and `status` precisely so the UI
+ * can say "already token 6" and point at it, instead of the dead end the contract
+ * warns about. `fromRpc` keeps only code/message/fields, so this reads the envelope
+ * directly to preserve them.
+ */
+export type CheckInOutcome =
+  | ({ kind: "checked_in" } & CheckInPayload)
+  | {
+      kind: "already_open";
+      visit_id: string;
+      queue_number: number;
+      status: VisitStatus;
+    }
+  | { kind: "failed"; error: AppError };
+
 async function realCheckInPatient(
   patientId: string,
   visitType: VisitType = "new",
   doctorId?: string,
-): Promise<Result<CheckInPayload>> {
+): Promise<CheckInOutcome> {
   const supabase = createClient();
-  return fromRpc<CheckInPayload>(
-    await supabase.rpc("check_in_patient", {
-      p_patient_id: patientId,
-      p_visit_type: visitType,
-      p_doctor_id: doctorId ?? undefined,
-    }),
-  );
+  const { data, error } = await supabase.rpc("check_in_patient", {
+    p_patient_id: patientId,
+    p_visit_type: visitType,
+    p_doctor_id: doctorId ?? undefined,
+  });
+
+  if (error) return { kind: "failed", error: mapPostgrestError(error) };
+
+  const envelope = data as
+    | {
+        ok?: boolean;
+        code?: string;
+        message?: string;
+        fields?: string[];
+        visit_id?: string;
+        queue_number?: number;
+        visit_type?: VisitType;
+        status?: VisitStatus;
+      }
+    | null;
+
+  if (!envelope || typeof envelope.ok !== "boolean") {
+    return {
+      kind: "failed",
+      error: {
+        code: "UNEXPECTED_RESPONSE",
+        message: "The server returned an unexpected response.",
+      },
+    };
+  }
+
+  if (envelope.ok) {
+    return {
+      kind: "checked_in",
+      visit_id: String(envelope.visit_id ?? ""),
+      queue_number: Number(envelope.queue_number ?? 0),
+      visit_type: envelope.visit_type ?? visitType,
+      status: envelope.status ?? "queued",
+    };
+  }
+
+  if (envelope.code === "VISIT_ALREADY_OPEN") {
+    return {
+      kind: "already_open",
+      visit_id: String(envelope.visit_id ?? ""),
+      queue_number: Number(envelope.queue_number ?? 0),
+      status: envelope.status ?? "queued",
+    };
+  }
+
+  return {
+    kind: "failed",
+    error: {
+      code: envelope.code ?? "UNKNOWN",
+      message: envelope.message ?? "Something went wrong.",
+      fields: envelope.fields,
+    },
+  };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -255,19 +331,25 @@ export function setVisitStatus(
     : realSetVisitStatus(visitId, status, cancellationReason);
 }
 
-export function checkInPatient(
+/** Per-tenant, per-day token counter for mock mode. Resets are not simulated. */
+let mockToken = 3;
+const mockCheckedIn = new Map<string, { visit_id: string; queue_number: number }>();
+
+export async function checkInPatient(
   patientId: string,
   visitType: VisitType = "new",
   doctorId?: string,
-): Promise<Result<CheckInPayload>> {
-  if (USE_MOCK) {
-    return Promise.resolve({
-      data: null,
-      error: {
-        code: "NOT_IMPLEMENTED",
-        message: "Check-in is not mocked yet.",
-      },
-    });
+): Promise<CheckInOutcome> {
+  if (!USE_MOCK) return realCheckInPatient(patientId, visitType, doctorId);
+
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  const existing = mockCheckedIn.get(patientId);
+  if (existing) {
+    // Mirrors the real refusal, including handing back the existing token.
+    return { kind: "already_open", ...existing, status: "queued" };
   }
-  return realCheckInPatient(patientId, visitType, doctorId);
+  mockToken += 1;
+  const visit = { visit_id: `mock-visit-${mockToken}`, queue_number: mockToken };
+  mockCheckedIn.set(patientId, visit);
+  return { kind: "checked_in", ...visit, visit_type: visitType, status: "queued" };
 }
