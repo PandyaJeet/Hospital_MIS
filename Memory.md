@@ -316,6 +316,11 @@ Every feature module is dual-mode: the real Supabase path is written, `NEXT_PUBL
 
 Contract nuances deliberately honoured (each was a way to get it wrong): duplicate phone is an overridable prompt, not a wall; no field blocks a clinical note or a vitals save; prescription safety renders **by severity** with a blocking interrupt only on `high`, and a failed check never reads as safe; tax is per line and a non-GST clinic gets a bill of supply with no tax section; a ₹0 charge means "price unknown", not free; rounds shows each measurement's own age because values come from different moments; occupancy shows "no beds" rather than 0%; staff activity is never called utilization; users cannot be deleted, only deactivated.
 
+**Run `npm run audit:frontend` (in `apps/web`) before committing.** It is the counterpart to the backend's `npm run audit:codes`, and every check in it exists because that bug already shipped here:
+- **every `t()` key resolves in all three locales**, and no message key contains a dot. Caught `labs.close` / `labs.cancel` rendering as raw text on buttons
+- **every exported data-layer function has a caller.** Caught `listIpdAccrual()` dead, the same shape as `check_in_patient()` having no caller
+- Route access is deliberately **not** checked there. It was, by regex, and produced 45 false findings; `e2e/rbac.spec.ts` covers it properly by driving the real proxy. A noisy audit is worse than none
+
 Added with check-in and search:
 - **Check-in is NOT idempotent, and that is deliberate.** `check_in_patient()` refuses a second open visit for the same patient on the same day, because two tokens become two consultations become two consultation charges (`opd-queue.md` §3). `VISIT_ALREADY_OPEN` is therefore an **answer, not a failure**: it carries the existing `visit_id` and `queue_number` so the UI shows that token and links to the queue. `checkInPatient()` returns the same three-state outcome `registerPatient()` uses. **A previous version of this frontend assumed idempotency and was wrong** — the E2E suite caught it
 - **Patient search is a name *prefix*, not a substring.** There is no trigram index, so a leading wildcard would scan every patient in the clinic
